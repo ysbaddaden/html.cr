@@ -4,12 +4,13 @@
 #   def bytesize=(@bytesize : Int32)
 #   end
 # end
+require "./entities"
 
 module HTML
   class Lexer
     abstract struct Token
       struct Doctype < Token
-        getter name : String
+        getter name : String?
         getter? public_id : String?
         getter? system_id : String?
 
@@ -118,35 +119,45 @@ module HTML
     end
 
     protected def lex_start_tag
-      name = consume_name
-      empty = false
+      if name = consume_name
+        empty = false
 
-      while current_char?
-        skip_s
+        while current_char?
+          skip_s
 
-        case current_char?
-        when '>'
-          consume_char
-          break
-        when '/'
-          consume_char
-          consume_char if current_char? == '>'
-          empty = true
-          break
-        else
-          attr_name, attr_value = consume_attribute
-          @attributes[attr_name] ||= attr_value
+          case current_char?
+          when '>'
+            consume_char
+            break
+          when '<'
+            # ignore
+            consume_char
+          when '/'
+            consume_char
+            if current_char? == '>'
+              consume_char
+              empty = true
+              break
+            else
+              # ignore
+            end
+          else
+            attr_name, attr_value = lex_attribute
+            @attributes[attr_name] ||= attr_value
+          end
         end
+
+        attributes = nil
+
+        unless @attributes.empty?
+          attributes = @attributes.dup
+          @attributes.clear
+        end
+
+        Token::StartTag.new(name, attributes, empty)
+      else
+        lex_comment(valid: false)
       end
-
-      attributes = nil
-
-      unless @attributes.empty?
-        attributes = @attributes.dup
-        @attributes.clear
-      end
-
-      Token::StartTag.new(name, attributes, empty)
     end
 
     # protected def void_element?(name)
@@ -159,49 +170,70 @@ module HTML
     # end
 
     protected def lex_end_tag
-      name = consume_name
+      if name = consume_name
+        while current_char?
+          skip_s
 
-      while current_char?
-        skip_s
-
-        case current_char?
-        when '>'
-          consume_char
-          break
-        when '/'
-          consume_char
-          consume_char if current_char? == '>'
-          break
-        else
-          consume_attribute
+          case current_char?
+          when '>'
+            consume_char
+            break
+          when '/'
+            consume_char
+            consume_char if current_char? == '>'
+            break
+          else
+            lex_attribute
+          end
         end
-      end
 
-      Token::EndTag.new(name)
+        Token::EndTag.new(name)
+      else
+        lex_comment(valid: false)
+      end
     end
 
-    protected def consume_attribute
-      name = consume_name
+    protected def lex_attribute
+      name = consume_name(valid: false).not_nil!
       skip_s
       if current_char? == '='
         consume_char
         skip_s
-        value = consume_attr_value
+        value = lex_attr_value
       end
       {name, value || ""}
     end
 
-    # TODO: replace CharRef (&#xH+, &#D+)
-    # TODO: replace HTML ENTITIES (&name;)
-    protected def consume_attr_value
+    protected def lex_attr_value
       case current_char?
       when '"', '\''
         quote = consume_char
-        value = consume_until { |char| char == quote }
-        consume_char
-        value
+        String.build do |str|
+          while char = current_char?
+            case char
+            when quote
+              consume_char
+              break
+            when '&'
+              str << consume_entity(attr: true)
+            else
+              str << consume_char
+            end
+          end
+        end
       else
-        consume_name
+        String.build do |str|
+          while char = current_char?
+            case char
+            when ' ', '\t', '\r', '\n', '>', '/'
+              break
+            when '&'
+              str << consume_entity(attr: true)
+            else
+              str << consume_char
+            end
+          end
+        end
       end
     end
 
@@ -212,11 +244,10 @@ module HTML
       while char = current_char?
         case char
         when '-'
-
           dash += 1
         when '>', nil
           consume_char
-          dash -= 4 # if dash > 4
+          dash -= 4
           return Token::Comment.new(dash > 0 ? "-" * dash : "")
         else
           dash -= 2 if dash >= 2
@@ -279,19 +310,158 @@ module HTML
       Token::Character.new(data)
     end
 
-    # TODO: replace CharRef (&#xH+, &#D+)
-    # TODO: replace HTML ENTITIES (&name;)
     protected def lex_character_data(first_char = nil)
       data = String.build do |str|
         if first_char
           str << first_char
         end
         while char = current_char?
-          break if char == '<' && peek_char? != '>'
-          str << consume_char
+          case char
+          when '<'
+            break unless peek_char? == '>'
+            str << consume_char
+          when '&'
+            str << consume_entity
+          else
+            str << consume_char
+          end
         end
       end
       Token::Character.new(data)
+    end
+
+    protected def consume_entity(attr = false)
+      consume_char
+
+      if current_char? == '#'
+        consume_char
+        consume_char_ref
+      else
+        consume_entity_ref(attr)
+      end
+    end
+
+    protected def consume_char_ref
+      value = 0
+      digits = false
+
+      if current_char? == 'x'
+        consume_char
+
+        begin
+          while char = current_char?
+            case char
+            when '0'..'9'
+              digits = true
+              value = value * 16 + (char.ord - '0'.ord)
+            when 'a'..'f'
+              digits = true
+              value = value * 16 + (char.ord - 'a'.ord + 10)
+            when 'A'..'F'
+              digits = true
+              value = value * 16 + (char.ord - 'A'.ord + 10)
+            when ';'
+              consume_char
+              return "&#x;" unless digits
+              break
+            else
+              break
+            end
+            consume_char
+          end
+          return "&#x" unless digits
+        rescue OverflowError
+          while char = current_char?
+            case char
+            when '0'..'9', 'a'..'z', 'A'..'Z'
+              consume_char
+            when ';'
+              consume_char
+              break
+            else
+              break
+            end
+          end
+          value = 0xFFFD
+        end
+      else
+        begin
+          while char = current_char?
+            case char
+            when '0'..'9'
+              digits = true
+              value = value * 10 + (char.ord - '0'.ord)
+            when ';'
+              consume_char
+              return "&#;" unless digits
+              break
+            else
+              break
+            end
+            consume_char
+          end
+          return "&#" unless digits
+        rescue OverflowError
+          while char = current_char?
+            case char
+            when '0'..'9'
+              consume_char
+            when ';'
+              consume_char
+              break
+            else
+              break
+            end
+          end
+          value = 0xFFFD
+        end
+      end
+
+      if 0 < value <= 0xd7ff || 0xe000 <= value <= Char::MAX_CODEPOINT
+        value.unsafe_chr
+      else
+        '\uFFFD'
+      end
+    end
+
+    protected def consume_entity_ref(attr = false)
+      semicolon = false
+
+      name = String.build do |str|
+        while char = current_char?
+          case char
+          when'a'..'z', 'A'..'Z', '0'..'9'
+            str << consume_char
+          when ';'
+            semicolon = true
+            str << consume_char
+            break
+          else
+            break
+          end
+        end
+      end
+
+      if value = ENTITIES[name]?
+        return value
+      end
+
+      unless semicolon || attr
+        n = name
+        i = -1
+        loop do
+          n = name[0...i]
+          break if n.empty?
+
+          if value = ENTITIES[n]?
+            return "#{value}#{name[i..]}"
+          end
+
+          i -= 1
+        end
+      end
+
+      "&#{name}"
     end
 
     protected def current_char?
@@ -301,12 +471,25 @@ module HTML
         @column += 1
         if char = @peek_char
           @peek_char = nil
-          @current_char = char
+          @current_char = normalize(char)
         else
           char = @io.read_char
           # p [:current_char, char, @column]
-          @current_char = char
+          @current_char = normalize(char)
         end
+      end
+    end
+
+    protected def normalize(char)
+      case char
+      when '\u0000'
+        '\uFFFD'
+      when '\r'
+        # CR or CRLF => LF
+        @peek_char = nil if peek_char? == '\n'
+        '\n'
+      else
+        char
       end
     end
 
@@ -335,14 +518,25 @@ module HTML
       char
     end
 
-    protected def consume_name
+    protected def consume_name(downcase = true, valid = true)
+      if valid
+        case current_char?
+        when nil
+          return
+        when 'a'..'z', 'A'..'Z'
+          # continue
+        else
+          return
+        end
+      end
+
       String.build do |str|
         while char = current_char?
           case char
-          when '>', ' ', '=', '/'
+          when '>', ' ', '=', '/', ';'
             break
           when 'A'..'Z'
-            str << char.downcase
+            str << (downcase ? char.downcase : char)
           else
             str << char
           end

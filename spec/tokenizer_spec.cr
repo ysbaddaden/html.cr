@@ -1,46 +1,46 @@
 require "./spec_helper"
 describe "html5lib-tests/tokenizer/contentModelFlags.test" do
   it "contentModelFlags:PLAINTEXT content model flag" do
-  skip
+    skip
   end
   it "contentModelFlags:PLAINTEXT with seeming close tag" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (case-insensitivity)" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (ending with space)" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (ending with EOF)" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (ending with slash)" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag not closing RCDATA or RAWTEXT (ending with left-angle-bracket)" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag with incorrect name in RCDATA or RAWTEXT" do
-  skip
+    skip
   end
   it "contentModelFlags:Partial end tags leading straight into partial end tags" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag with incorrect name in RCDATA or RAWTEXT (starting like correct name)" do
-  skip
+    skip
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT, switching back to PCDATA" do
-  skip
+    skip
   end
   it "contentModelFlags:RAWTEXT w/ something looking like an entity" do
-  skip
+    skip
   end
   it "contentModelFlags:RCDATA w/ an entity" do
-  skip
+    skip
   end
 end
 describe "html5lib-tests/tokenizer/domjs.test" do
@@ -54,97 +54,97 @@ describe "html5lib-tests/tokenizer/domjs.test" do
     assert_lexes "<?\r\n\n", "[[\"Comment\",\"?\\n\\n\"]]"
   end
   it "domjs:Raw NUL replacement" do
-  skip
+    skip
   end
   it "domjs:NUL in CDATA section" do
-  skip
+    skip
   end
   it "domjs:NUL in script HTML comment" do
-  skip
+    skip
   end
   it "domjs:NUL in script HTML comment - double escaped" do
-  skip
+    skip
   end
   it "domjs:EOF in script HTML comment" do
-  skip
+    skip
   end
   it "domjs:EOF in script HTML comment after dash" do
-  skip
+    skip
   end
   it "domjs:EOF in script HTML comment after dash dash" do
-  skip
+    skip
   end
   it "domjs:EOF in script HTML comment double escaped after dash" do
-  skip
+    skip
   end
   it "domjs:EOF in script HTML comment double escaped after dash dash" do
-  skip
+    skip
   end
   it "domjs:EOF in script HTML comment - double escaped" do
-  skip
+    skip
   end
   it "domjs:Dash in script HTML comment" do
-  skip
+    skip
   end
   it "domjs:Dash less-than in script HTML comment" do
-  skip
+    skip
   end
   it "domjs:Dash at end of script HTML comment" do
-  skip
+    skip
   end
   it "domjs:</script> in script HTML comment" do
-  skip
+    skip
   end
   it "domjs:</script> in script HTML comment - double escaped" do
-  skip
+    skip
   end
   it "domjs:</script> in script HTML comment - double escaped with nested <script>" do
-  skip
+    skip
   end
   it "domjs:</script> in script HTML comment - double escaped with abrupt end" do
-  skip
+    skip
   end
   it "domjs:Incomplete start tag in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "domjs:Unclosed start tag in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "domjs:Incomplete end tag in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "domjs:Unclosed end tag in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "domjs:leading U+FEFF must pass through" do
-  skip
+    skip
   end
   it "domjs:Non BMP-charref in RCDATA" do
-  skip
+    skip
   end
   it "domjs:Bad charref in RCDATA" do
-  skip
+    skip
   end
   it "domjs:lowercase endtags" do
-  skip
+    skip
   end
   it "domjs:bad endtag (space before name)" do
-  skip
+    skip
   end
   it "domjs:bad endtag (not matching last start tag)" do
-  skip
+    skip
   end
   it "domjs:bad endtag (without close bracket)" do
-  skip
+    skip
   end
   it "domjs:bad endtag (trailing solidus)" do
-  skip
+    skip
   end
   it "domjs:Non BMP-charref in attribute" do
     assert_lexes "<p id=\"&NotEqualTilde;\">", "[[\"StartTag\",\"p\",{\"id\":\"≂̸\"}]]"
   end
   it "domjs:--!NUL in comment " do
-  skip
+    skip
   end
   it "domjs:space EOF after doctype " do
     assert_lexes "<!DOCTYPE html ", "[[\"DOCTYPE\",\"html\",null,null,false]]"
@@ -153,25 +153,25 @@ describe "html5lib-tests/tokenizer/domjs.test" do
     assert_lexes "<![CDATA[foo]]>", "[[\"Comment\",\"[CDATA[foo]]\"]]"
   end
   it "domjs:CDATA content" do
-  skip
+    skip
   end
   it "domjs:CDATA followed by HTML content" do
-  skip
+    skip
   end
   it "domjs:CDATA with extra bracket" do
-  skip
+    skip
   end
   it "domjs:CDATA without end marker" do
-  skip
+    skip
   end
   it "domjs:CDATA with single bracket ending" do
-  skip
+    skip
   end
   it "domjs:CDATA with two brackets ending" do
-  skip
+    skip
   end
   it "domjs:HTML tag in script data" do
-  skip
+    skip
   end
 end
 describe "html5lib-tests/tokenizer/entities.test" do
@@ -418,19 +418,19 @@ describe "html5lib-tests/tokenizer/entities.test" do
 end
 describe "html5lib-tests/tokenizer/escapeFlag.test" do
   it "escapeFlag:Commented close tag in RCDATA or RAWTEXT" do
-  skip
+    skip
   end
   it "escapeFlag:Bogus comment in RCDATA or RAWTEXT" do
-  skip
+    skip
   end
   it "escapeFlag:End tag surrounded by bogus comment in RCDATA or RAWTEXT" do
-  skip
+    skip
   end
   it "escapeFlag:Commented entities in RCDATA" do
-  skip
+    skip
   end
   it "escapeFlag:Incorrect comment ending sequences in RCDATA or RAWTEXT" do
-  skip
+    skip
   end
 end
 describe "html5lib-tests/tokenizer/namedEntities.test" do
@@ -14181,43 +14181,43 @@ describe "html5lib-tests/tokenizer/test1.test" do
     assert_lexes "<!-- <<!--test-->", "[[\"Comment\",\" <<!--test\"]]"
   end
   it "test1:< in script data" do
-  skip
+    skip
   end
   it "test1:<! in script data" do
-  skip
+    skip
   end
   it "test1:<!- in script data" do
-  skip
+    skip
   end
   it "test1:Escaped script data" do
-  skip
+    skip
   end
   it "test1:< in script HTML comment" do
-  skip
+    skip
   end
   it "test1:</ in script HTML comment" do
-  skip
+    skip
   end
   it "test1:Start tag in script HTML comment" do
-  skip
+    skip
   end
   it "test1:End tag in script HTML comment" do
-  skip
+    skip
   end
   it "test1:- in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "test1:-- in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "test1:--- in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "test1:- spaced in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "test1:-- spaced in script HTML comment double escaped" do
-  skip
+    skip
   end
   it "test1:Ampersand EOF" do
     assert_lexes "&", "[[\"Character\",\"&\"]]"
@@ -14428,208 +14428,208 @@ describe "html5lib-tests/tokenizer/test2.test" do
 end
 describe "html5lib-tests/tokenizer/test3.test" do
   it "test3:[empty]" do
-  skip
+    skip
   end
   it "test3:[empty]" do
-  skip
+    skip
   end
   it "test3:\\u0009" do
-  skip
+    skip
   end
   it "test3:\\u0009" do
-  skip
+    skip
   end
   it "test3:\\u000A" do
-  skip
+    skip
   end
   it "test3:\\u000A" do
-  skip
+    skip
   end
   it "test3:\\u000B" do
-  skip
+    skip
   end
   it "test3:\\u000B" do
-  skip
+    skip
   end
   it "test3:\\u000C" do
-  skip
+    skip
   end
   it "test3:\\u000C" do
-  skip
+    skip
   end
   it "test3: " do
-  skip
+    skip
   end
   it "test3: " do
-  skip
+    skip
   end
   it "test3:!" do
-  skip
+    skip
   end
   it "test3:!" do
-  skip
+    skip
   end
   it "test3:\"" do
-  skip
+    skip
   end
   it "test3:\"" do
-  skip
+    skip
   end
   it "test3:%" do
-  skip
+    skip
   end
   it "test3:%" do
-  skip
+    skip
   end
   it "test3:&" do
-  skip
+    skip
   end
   it "test3:&" do
-  skip
+    skip
   end
   it "test3:'" do
-  skip
+    skip
   end
   it "test3:'" do
-  skip
+    skip
   end
   it "test3:," do
-  skip
+    skip
   end
   it "test3:," do
-  skip
+    skip
   end
   it "test3:-" do
-  skip
+    skip
   end
   it "test3:-" do
-  skip
+    skip
   end
   it "test3:." do
-  skip
+    skip
   end
   it "test3:." do
-  skip
+    skip
   end
   it "test3:/" do
-  skip
+    skip
   end
   it "test3:/" do
-  skip
+    skip
   end
   it "test3:0" do
-  skip
+    skip
   end
   it "test3:0" do
-  skip
+    skip
   end
   it "test3:1" do
-  skip
+    skip
   end
   it "test3:1" do
-  skip
+    skip
   end
   it "test3:9" do
-  skip
+    skip
   end
   it "test3:9" do
-  skip
+    skip
   end
   it "test3:;" do
-  skip
+    skip
   end
   it "test3:;" do
-  skip
+    skip
   end
   it "test3:;=" do
-  skip
+    skip
   end
   it "test3:;=" do
-  skip
+    skip
   end
   it "test3:;>" do
-  skip
+    skip
   end
   it "test3:;>" do
-  skip
+    skip
   end
   it "test3:;?" do
-  skip
+    skip
   end
   it "test3:;?" do
-  skip
+    skip
   end
   it "test3:;@" do
-  skip
+    skip
   end
   it "test3:;@" do
-  skip
+    skip
   end
   it "test3:;A" do
-  skip
+    skip
   end
   it "test3:;A" do
-  skip
+    skip
   end
   it "test3:;B" do
-  skip
+    skip
   end
   it "test3:;B" do
-  skip
+    skip
   end
   it "test3:;Y" do
-  skip
+    skip
   end
   it "test3:;Y" do
-  skip
+    skip
   end
   it "test3:;Z" do
-  skip
+    skip
   end
   it "test3:;Z" do
-  skip
+    skip
   end
   it "test3:;`" do
-  skip
+    skip
   end
   it "test3:;`" do
-  skip
+    skip
   end
   it "test3:;a" do
-  skip
+    skip
   end
   it "test3:;a" do
-  skip
+    skip
   end
   it "test3:;b" do
-  skip
+    skip
   end
   it "test3:;b" do
-  skip
+    skip
   end
   it "test3:;y" do
-  skip
+    skip
   end
   it "test3:;y" do
-  skip
+    skip
   end
   it "test3:;z" do
-  skip
+    skip
   end
   it "test3:;z" do
-  skip
+    skip
   end
   it "test3:;{" do
-  skip
+    skip
   end
   it "test3:;{" do
-  skip
+    skip
   end
   it "test3:;\\uDBC0\\uDC00" do
-  skip
+    skip
   end
   it "test3:;\\uDBC0\\uDC00" do
-  skip
+    skip
   end
   it "test3:<" do
     assert_lexes "<", "[[\"Character\",\"<\"]]"
@@ -19108,94 +19108,94 @@ describe "html5lib-tests/tokenizer/test3.test" do
     assert_lexes "<\u{100000}", "[[\"Character\",\"<\u{100000}\"]]"
   end
   it "test3:=" do
-  skip
+    skip
   end
   it "test3:=" do
-  skip
+    skip
   end
   it "test3:>" do
-  skip
+    skip
   end
   it "test3:>" do
-  skip
+    skip
   end
   it "test3:?" do
-  skip
+    skip
   end
   it "test3:?" do
-  skip
+    skip
   end
   it "test3:@" do
-  skip
+    skip
   end
   it "test3:@" do
-  skip
+    skip
   end
   it "test3:A" do
-  skip
+    skip
   end
   it "test3:A" do
-  skip
+    skip
   end
   it "test3:B" do
-  skip
+    skip
   end
   it "test3:B" do
-  skip
+    skip
   end
   it "test3:Y" do
-  skip
+    skip
   end
   it "test3:Y" do
-  skip
+    skip
   end
   it "test3:Z" do
-  skip
+    skip
   end
   it "test3:Z" do
-  skip
+    skip
   end
   it "test3:`" do
-  skip
+    skip
   end
   it "test3:`" do
-  skip
+    skip
   end
   it "test3:a" do
-  skip
+    skip
   end
   it "test3:a" do
-  skip
+    skip
   end
   it "test3:b" do
-  skip
+    skip
   end
   it "test3:b" do
-  skip
+    skip
   end
   it "test3:y" do
-  skip
+    skip
   end
   it "test3:y" do
-  skip
+    skip
   end
   it "test3:z" do
-  skip
+    skip
   end
   it "test3:z" do
-  skip
+    skip
   end
   it "test3:{" do
-  skip
+    skip
   end
   it "test3:{" do
-  skip
+    skip
   end
   it "test3:\\uDBC0\\uDC00" do
-  skip
+    skip
   end
   it "test3:\\uDBC0\\uDC00" do
-  skip
+    skip
   end
 end
 describe "html5lib-tests/tokenizer/test4.test" do
@@ -20428,16 +20428,16 @@ describe "html5lib-tests/tokenizer/unicodeChars.test" do
 end
 describe "html5lib-tests/tokenizer/unicodeCharsProblematic.test" do
   it "unicodeCharsProblematic:Invalid Unicode character U+DFFF" do
-  skip
+    skip
   end
   it "unicodeCharsProblematic:Invalid Unicode character U+D800" do
-  skip
+    skip
   end
   it "unicodeCharsProblematic:Invalid Unicode character U+DFFF with valid preceding character" do
-  skip
+    skip
   end
   it "unicodeCharsProblematic:Invalid Unicode character U+D800 with valid following character" do
-  skip
+    skip
   end
   it "unicodeCharsProblematic:CR followed by U+0000" do
     assert_lexes "\r\u0000", "[[\"Character\",\"\\n\\u0000\"]]"
