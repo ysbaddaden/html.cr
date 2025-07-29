@@ -1,5 +1,5 @@
 module HTML
-  ENTITIES = Hash(String, String){
+  ENTITIES = {
     "AElig"                            => "Æ",
     "AElig;"                           => "Æ",
     "AMP"                              => "&",

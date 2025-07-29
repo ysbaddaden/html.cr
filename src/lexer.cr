@@ -1,13 +1,51 @@
+require "./entities"
+
 # # :nodoc:
 # class String::Builder
 #   # :nodoc:
 #   def bytesize=(@bytesize : Int32)
 #   end
 # end
-require "./entities"
+
+# :nodoc:
+lib LibIntrinsics
+  fun llvm_sadd_sat_i32 = "llvm.sadd.sat.i32"(Int32, Int32) : Int32
+  fun llvm_smul_with_overflow_i32 = "llvm.smul.with.overflow.i32"(Int32, Int32) : {Int32, Bool}
+end
 
 module HTML
   class Lexer
+    # :nodoc:
+    CHARACTER_REFERENCE_REPLACEMENTS = {
+      0x80 => '\u20AC',
+      0x82 => '\u201A',
+      0x83 => '\u0192',
+      0x84 => '\u201E',
+      0x85 => '\u2026',
+      0x86 => '\u2020',
+      0x87 => '\u2021',
+      0x88 => '\u02C6',
+      0x89 => '\u2030',
+      0x8A => '\u0160',
+      0x8B => '\u2039',
+      0x8C => '\u0152',
+      0x8E => '\u017D',
+      0x91 => '\u2018',
+      0x92 => '\u2019',
+      0x93 => '\u201C',
+      0x94 => '\u201D',
+      0x95 => '\u2022',
+      0x96 => '\u2013',
+      0x97 => '\u2014',
+      0x98 => '\u02DC',
+      0x99 => '\u2122',
+      0x9A => '\u0161',
+      0x9B => '\u203A',
+      0x9C => '\u0153',
+      0x9E => '\u017E',
+      0x9F => '\u0178',
+    }
+
     abstract struct Token
       struct Doctype < Token
         getter name : String?
@@ -56,10 +94,15 @@ module HTML
       new IO::Memory.new(string)
     end
 
+    getter line = 0
     getter column = 0
 
     def initialize(@io : IO)
       @attributes = Hash(String, String).new
+      @buffer = IO::Memory.new
+
+      # TODO: determine encoding
+      # https://dev.w3.org/html5/spec-LC/parsing.html#determining-the-character-encoding
     end
 
     def next : Token
@@ -70,18 +113,22 @@ module HTML
         consume_char
 
         case current_char?
+        when nil
+          error "eof-before-tag-name"
+          Token::Character.new("<")
         when '!'
+          # lex_markup_declaration
           consume_char
           case current_char?
           when '-'
-            lex_comment(valid: peek_char? == '-')
+            lex_comment(bogus: peek_char? != '-')
           when '['
             lex_cdata_section
           else
             if consume?("DOCTYPE")
               lex_doctype
             else
-              lex_comment(valid: false)
+              lex_comment(bogus: true)
             end
           end
         when '/'
@@ -92,15 +139,17 @@ module HTML
           else
             lex_end_tag
           end
+        when '?'
+          error "unexpected-question-mark-instead-of-tag-name"
+          lex_comment(bogus: true)
+        when 'a'..'z', 'A'..'Z'
+          lex_start_tag
         else
-          if current_char? == '>'
-            lex_character_data('<')
-          else
-            lex_start_tag
-          end
+          error "invalid-first-character-of-tag-name"
+          lex_data
         end
       else
-        lex_character_data
+        lex_data
       end
     end
 
@@ -156,18 +205,9 @@ module HTML
 
         Token::StartTag.new(name, attributes, empty)
       else
-        lex_comment(valid: false)
+        lex_comment(bogus: true)
       end
     end
-
-    # protected def void_element?(name)
-    #   case name
-    #   when "img", "input", "link", "meta", "br", "hr", "area", "base", "col", "embed", "source", "track", "wbr", "param"
-    #     true
-    #   else
-    #     false
-    #   end
-    # end
 
     protected def lex_end_tag
       if name = consume_name
@@ -189,7 +229,7 @@ module HTML
 
         Token::EndTag.new(name)
       else
-        lex_comment(valid: false)
+        lex_comment(bogus: true)
       end
     end
 
@@ -215,7 +255,7 @@ module HTML
               consume_char
               break
             when '&'
-              str << consume_entity(attr: true)
+              consume_entity(str, attr: true)
             else
               str << consume_char
             end
@@ -228,7 +268,7 @@ module HTML
             when ' ', '\t', '\r', '\n', '>', '/'
               break
             when '&'
-              str << consume_entity(attr: true)
+              consume_entity(str, attr: true)
             else
               str << consume_char
             end
@@ -237,7 +277,7 @@ module HTML
       end
     end
 
-    protected def lex_comment(valid = true)
+    protected def lex_comment(bogus = false)
       dash = 0
 
       # short comments
@@ -266,7 +306,7 @@ module HTML
           when '-'
             dash += 1
           when '>'
-            if !valid || dash >= 2
+            if bogus || dash >= 2
               # str.bytesize -= 2 if dash >= 2
               # dash = 0
               consume_char
@@ -281,7 +321,7 @@ module HTML
       end
 
       # drop trailing '--'
-      if valid && dash >= 2
+      if !bogus && dash >= 2
         2.times { data = data.chomp('-') }
       end
 
@@ -310,7 +350,7 @@ module HTML
       Token::Character.new(data)
     end
 
-    protected def lex_character_data(first_char = nil)
+    protected def lex_data(first_char = nil)
       data = String.build do |str|
         if first_char
           str << first_char
@@ -321,7 +361,10 @@ module HTML
             break unless peek_char? == '>'
             str << consume_char
           when '&'
-            str << consume_entity
+            consume_entity(str)
+          when '\u0000'
+            error "unexpected-null-character"
+            str << consume_char
           else
             str << consume_char
           end
@@ -330,101 +373,134 @@ module HTML
       Token::Character.new(data)
     end
 
-    protected def consume_entity(attr = false)
+    protected def consume_entity(io, attr = false)
       consume_char
 
-      if current_char? == '#'
+      case current_char?
+      when nil
+        io << '&'
+      when '#'
         consume_char
-        consume_char_ref
+        consume_numeric_character_reference(io)
+      when 'a'..'z', 'A'..'Z', '0'..'9'
+        consume_named_character_reference(io, attr)
       else
-        consume_entity_ref(attr)
+        io << '&'
       end
     end
 
-    protected def consume_char_ref
+    protected def consume_numeric_character_reference(io)
+      value =
+        if current_char? == 'x' || current_char? == 'X'
+          consume_hexadecimal_character_reference(io)
+        else
+          consume_decimal_character_reference(io)
+        end
+      return unless value
+
+      case value
+      when 0x00
+        error "null-character-reference"
+        value = 0xFFFD
+      when 0x110000..
+        error "character-reference-outside-unicode-range"
+        value = 0xFFFD
+      when 0xD800..0xDFFF
+        error "surrogate-character-reference"
+        value = 0xFFFD
+      when 0xFDD0..0xFDEF, 0xFFFE, 0xFFFF, 0x1FFFE, 0x1FFFF, 0x2FFFE, 0x2FFFF,
+           0x3FFFE, 0x3FFFF, 0x4FFFE, 0x4FFFF, 0x5FFFE, 0x5FFFF, 0x6FFFE,
+           0x6FFFF, 0x7FFFE, 0x7FFFF, 0x8FFFE, 0x8FFFF, 0x9FFFE, 0x9FFFF,
+           0xAFFFE, 0xAFFFF, 0xBFFFE, 0xBFFFF, 0xCFFFE, 0xCFFFF, 0xDFFFE,
+           0xDFFFF, 0xEFFFE, 0xEFFFF, 0xFFFFE, 0xFFFFF, 0x10FFFE, 0x10FFFF
+        error "noncharacter-reference-reference"
+      when 0x01..0x08, 0x0B, 0x0D, 0x0E..0x1F, 0x007F..0x009F
+        error "control-character-reference"
+      end
+
+      char = CHARACTER_REFERENCE_REPLACEMENTS[value]? || value.unsafe_chr
+      io << char
+    end
+
+    protected def consume_hexadecimal_character_reference(io)
+      x = consume_char
       value = 0
       digits = false
+      semicolon = false
 
-      if current_char? == 'x'
+      while char = current_char?
+        case char
+        when '0'..'9'
+          digits = true
+          value = saturating_add(saturating_mul(value, 16), char.ord &- 0x30)
+        when 'A'..'F'
+          digits = true
+          value = saturating_add(saturating_mul(value, 16), char.ord &- 0x37)
+        when 'a'..'f'
+          digits = true
+          value = saturating_add(saturating_mul(value, 16), char.ord &- 0x57)
+        when ';'
+          consume_char
+          semicolon = true
+          break
+        else
+          error "missing-semicolon-after-character-reference"
+          break
+        end
         consume_char
-
-        begin
-          while char = current_char?
-            case char
-            when '0'..'9'
-              digits = true
-              value = value * 16 + (char.ord - '0'.ord)
-            when 'a'..'f'
-              digits = true
-              value = value * 16 + (char.ord - 'a'.ord + 10)
-            when 'A'..'F'
-              digits = true
-              value = value * 16 + (char.ord - 'A'.ord + 10)
-            when ';'
-              consume_char
-              return "&#x;" unless digits
-              break
-            else
-              break
-            end
-            consume_char
-          end
-          return "&#x" unless digits
-        rescue OverflowError
-          while char = current_char?
-            case char
-            when '0'..'9', 'a'..'z', 'A'..'Z'
-              consume_char
-            when ';'
-              consume_char
-              break
-            else
-              break
-            end
-          end
-          value = 0xFFFD
-        end
-      else
-        begin
-          while char = current_char?
-            case char
-            when '0'..'9'
-              digits = true
-              value = value * 10 + (char.ord - '0'.ord)
-            when ';'
-              consume_char
-              return "&#;" unless digits
-              break
-            else
-              break
-            end
-            consume_char
-          end
-          return "&#" unless digits
-        rescue OverflowError
-          while char = current_char?
-            case char
-            when '0'..'9'
-              consume_char
-            when ';'
-              consume_char
-              break
-            else
-              break
-            end
-          end
-          value = 0xFFFD
-        end
       end
 
-      if 0 < value <= 0xd7ff || 0xe000 <= value <= Char::MAX_CODEPOINT
-        value.unsafe_chr
-      else
-        '\uFFFD'
+      unless digits
+        error "absence-of-digits-in-numeric-character-reference"
+        io << "&#" << x
+        io << ';' if semicolon
+        return
       end
+
+      value
     end
 
-    protected def consume_entity_ref(attr = false)
+    private def consume_decimal_character_reference(io)
+      value = 0
+      digits = false
+      semicolon = false
+
+      while char = current_char?
+        case char
+        when '0'..'9'
+          digits = true
+          value = saturating_add(saturating_mul(value, 10), char.ord &- 0x30)
+          consume_char
+        when ';'
+          semicolon = true
+          consume_char
+          break
+        else
+          error "missing-semicolon-after-character-reference"
+          break
+        end
+      end
+
+      unless digits
+        error "absence-of-digits-in-numeric-character-reference"
+        io << "&#"
+        io << ';' if semicolon
+        return
+      end
+
+      value
+    end
+
+    private def saturating_add(a : Int32, b : Int32) : Int32
+      LibIntrinsics.llvm_sadd_sat_i32(a, b)
+    end
+
+    private def saturating_mul(a : Int32, b : Int32) : Int32
+      value, overflowed = LibIntrinsics.llvm_smul_with_overflow_i32(a, b)
+      overflowed ? Int32::MAX : value
+    end
+
+    protected def consume_named_character_reference(io, attr = false)
       semicolon = false
 
       name = String.build do |str|
@@ -437,55 +513,70 @@ module HTML
             str << consume_char
             break
           else
+            error "missing-semicolon-after-character-reference"
             break
           end
         end
       end
 
       if value = ENTITIES[name]?
-        return value
+        io << value
+        return
       end
 
       unless semicolon || attr
         n = name
         i = -1
+
         loop do
           n = name[0...i]
           break if n.empty?
 
           if value = ENTITIES[n]?
-            return "#{value}#{name[i..]}"
+            error "missing-semicolon-after-character-reference" unless attr
+            io << value
+            io << name[i..]
+            return
           end
 
           i -= 1
         end
       end
 
-      "&#{name}"
+      if semicolon
+        error "unknown-named-character-reference"
+      end
+
+      io << '&'
+      io << name
     end
 
     protected def current_char?
       if char = @current_char
-        char
-      else
-        @column += 1
+        return char
+      end
+
+      normalized_char =
         if char = @peek_char
           @peek_char = nil
           @current_char = normalize(char)
         else
-          char = @io.read_char
-          # p [:current_char, char, @column]
-          @current_char = normalize(char)
+          @current_char = normalize(@io.read_char)
         end
+
+      if normalized_char == '\n'
+        @line += 1
+        @column = 1
+      else
+        @column += 1
       end
+
+      normalized_char
     end
 
+    # Normalizes CRLF and lone CR to a single LF character.
     protected def normalize(char)
-      case char
-      when '\u0000'
-        '\uFFFD'
-      when '\r'
-        # CR or CRLF => LF
+      if char == '\r'
         @peek_char = nil if peek_char? == '\n'
         '\n'
       else
@@ -568,6 +659,9 @@ module HTML
           str << consume_char
         end
       end
+    end
+
+    protected def error(code : String)
     end
   end
 end

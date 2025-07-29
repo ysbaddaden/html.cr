@@ -3,7 +3,7 @@ require "json"
 # TODO: download from <https://html.spec.whatwg.org/entities.json>
 
 puts "module HTML"
-puts "  ENTITIES = Hash(String, String){"
+puts "  ENTITIES = {"
 JSON.parse(File.read("entities.json")).as_h.each do |name, h|
   name = name[1..] # drop leading '&'
   print "    "
