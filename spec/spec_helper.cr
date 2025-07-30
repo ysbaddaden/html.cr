@@ -14,6 +14,9 @@ class Minitest::Test
         assert_equal expected[1], token.name, nil, file, line
         assert_equal expected[2], token.public_id?, nil, file, line
         assert_equal expected[3], token.system_id?, nil, file, line
+        refute_equal expected[4], token.quirks_mode?, -> {
+          expected[4] ? "Expected quirks mode flag to not be set" : "Expected quirks mode flag to be set"
+        }, file, line
       in HTML::Lexer::Token::StartTag
         assert_equal expected[0], "StartTag", nil, file, line
         assert_equal expected[1], token.name, nil, file, line

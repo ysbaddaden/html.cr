@@ -51,8 +51,9 @@ module HTML
         getter name : String?
         getter? public_id : String?
         getter? system_id : String?
+        getter? quirks_mode : Bool
 
-        def initialize(@name, @public_id, @system_id)
+        def initialize(@name, @public_id, @system_id, @quirks_mode)
         end
       end
 
@@ -94,12 +95,13 @@ module HTML
       new IO::Memory.new(string)
     end
 
-    getter line = 0
+    getter line = 1
     getter column = 0
 
     def initialize(@io : IO)
       @attributes = Hash(String, String).new
       @buffer = IO::Memory.new
+      @quirks_mode = false
 
       # TODO: determine encoding
       # https://dev.w3.org/html5/spec-LC/parsing.html#determining-the-character-encoding
@@ -110,6 +112,7 @@ module HTML
       when nil
         Token::EOF.new
       when '<'
+        # lex_tag_open
         consume_char
 
         case current_char?
@@ -119,17 +122,15 @@ module HTML
         when '!'
           # lex_markup_declaration
           consume_char
-          case current_char?
-          when '-'
-            lex_comment(bogus: peek_char? != '-')
-          when '['
+          if consume?("--")
+            lex_comment
+          elsif consume?("[CDATA[")
             lex_cdata_section
+          elsif consume?("DOCTYPE", case_insensitive: true)
+            lex_doctype
           else
-            if consume?("DOCTYPE")
-              lex_doctype
-            else
-              lex_comment(bogus: true)
-            end
+            error "incorrectly-opened-comment"
+            lex_bogus_comment
           end
         when '/'
           consume_char
@@ -141,11 +142,12 @@ module HTML
           end
         when '?'
           error "unexpected-question-mark-instead-of-tag-name"
-          lex_comment(bogus: true)
+          lex_bogus_comment
         when 'a'..'z', 'A'..'Z'
           lex_start_tag
         else
           error "invalid-first-character-of-tag-name"
+          @buffer << '<'
           lex_data
         end
       else
@@ -154,17 +156,140 @@ module HTML
     end
 
     protected def lex_doctype
+      @quirks_mode = false
+
+      error "missing-whitespace-before-doctype-name" if skip_s == 0
+      name = consume_doctype_name
+
       skip_s
-      name = consume_name
+      case current_char?
+      when nil
+        error "eof-in-doctype"
+        @quirks_mode = true
+      when '>'
+        consume_char
+      else
+        if consume?("PUBLIC", case_insensitive: true)
+          public_id = consume_doctype_public_id
+          system_id = consume_doctype_system_id if public_id
+          consume_after_system_identifier
+        elsif consume?("SYSTEM", case_insensitive: true)
+          system_id = consume_doctype_system_id
+          consume_after_system_identifier
+        else
+          error "invalid-character-sequence-after-doctype-name"
+          skip_bogus_doctype
+          @quirks_mode = true
+        end
+      end
+
+      Token::Doctype.new(name, public_id, system_id, @quirks_mode)
+    end
+
+    protected def consume_after_system_identifier
       skip_s
-      # TODO: PUBLIC_ID
-      public_id = nil
-      skip_s
-      # TODO: SYSTEM_ID
-      system_id = nil
-      skip_s
-      consume_char if current_char? == '>'
-      Token::Doctype.new(name, public_id, system_id)
+
+      case current_char?
+      when '>'
+        consume_char
+      when nil
+        error "eof-in-doctype"
+        @quirks_mode = true
+      else
+        skip_bogus_doctype
+      end
+    end
+
+    protected def consume_doctype_name
+      loop do
+        case char = current_char?
+        when nil
+          error "eof-in-doctype"
+          @quirks_mode = true
+          break
+        when 'A'..'Z'
+          consume_char
+          @buffer << char.downcase
+        when ' ', '\t', '\n', '\f', '>'
+          break
+        when '\u0000'
+          consume_char
+          error "unexpected-null-character"
+          @buffer << '\uFFFD'
+        else
+          @buffer << consume_char
+        end
+      end
+
+      buffer_to_s do
+        error "missing-doctype-name"
+        @quirks_mode = true
+        nil
+      end
+    end
+
+    {% for kind in %w[public system] %}
+      protected def consume_doctype_{{kind.id}}_id
+        ws = skip_s
+
+        case current_char?
+        when nil
+          error "eof-in-doctype"
+          @quirks_mode = true
+        when '"', '\''
+          error "missing-whitespace-after-doctype-{{kind.id}}-keyword" if ws == 0
+          quote = consume_char
+
+          loop do
+            case current_char?
+            when nil
+              error "eof-in-doctype"
+              @quirks_mode = true
+              break
+            when '\u0000'
+              consume_char
+              error "unexpected-null-character"
+              @buffer << '\uFFFD'
+            when quote
+              consume_char
+              break
+            when '>'
+              error "abrupt-doctype-{{kind.id}}-identifier" if quote
+              @quirks_mode = true
+              break
+            else
+              @buffer << consume_char
+            end
+          end
+
+          return buffer_to_s do
+            unless quote
+              error "missing-doctype-{{kind.id}}-identifier"
+              @quirks_mode = true
+            end
+            ""
+          end
+        when '>'
+          # done
+        else
+          error "missing-quote-before-doctype-{{kind.id}}-identifier"
+          skip_bogus_doctype
+          @quirks_mode = true
+        end
+
+        nil
+      end
+    {% end %}
+
+    protected def skip_bogus_doctype
+      while current_char?
+        case consume_char
+        when '>'
+          break
+        when '\u0000'
+          error "unexpected-null-character"
+        end
+      end
     end
 
     protected def lex_start_tag
@@ -205,7 +330,7 @@ module HTML
 
         Token::StartTag.new(name, attributes, empty)
       else
-        lex_comment(bogus: true)
+        lex_bogus_comment
       end
     end
 
@@ -229,7 +354,7 @@ module HTML
 
         Token::EndTag.new(name)
       else
-        lex_comment(bogus: true)
+        lex_bogus_comment
       end
     end
 
@@ -248,86 +373,100 @@ module HTML
       case current_char?
       when '"', '\''
         quote = consume_char
-        String.build do |str|
-          while char = current_char?
-            case char
-            when quote
-              consume_char
-              break
-            when '&'
-              consume_entity(str, attr: true)
-            else
-              str << consume_char
-            end
+        while char = current_char?
+          case char
+          when quote
+            consume_char
+            break
+          when '&'
+            consume_entity(@buffer, attr: true)
+          else
+            @buffer << consume_char
           end
         end
       else
-        String.build do |str|
-          while char = current_char?
-            case char
-            when ' ', '\t', '\r', '\n', '>', '/'
-              break
-            when '&'
-              consume_entity(str, attr: true)
-            else
-              str << consume_char
-            end
-          end
-        end
-      end
-    end
-
-    protected def lex_comment(bogus = false)
-      dash = 0
-
-      # short comments
-      while char = current_char?
-        case char
-        when '-'
-          dash += 1
-        when '>', nil
-          consume_char
-          dash -= 4
-          return Token::Comment.new(dash > 0 ? "-" * dash : "")
-        else
-          dash -= 2 if dash >= 2
-          break
-        end
-        consume_char
-      end
-
-      # normal comments (might be unterminated)
-      data = String.build do |str|
-        dash.times { str << '-' } if dash > 0
-        dash = 0
-
         while char = current_char?
           case char
-          when '-'
-            dash += 1
-          when '>'
-            if bogus || dash >= 2
-              # str.bytesize -= 2 if dash >= 2
-              # dash = 0
-              consume_char
-              break
-            end
+          when ' ', '\t', '\r', '\n', '>', '/'
+            break
+          when '&'
+            consume_entity(@buffer, attr: true)
           else
-            dash = 0
+            @buffer << consume_char
           end
-          str << consume_char
-          consume_char
         end
       end
 
-      # drop trailing '--'
-      if !bogus && dash >= 2
-        2.times { data = data.chomp('-') }
-      end
-
-      Token::Comment.new(data)
+      buffer_to_s
     end
 
+    protected def lex_comment
+      if current_char? == '>'
+        consume_char
+        error "abrupt-closing-of-empty-comment" # <!-->
+        return Token::Comment.new("")
+      end
+
+      if current_char? == '-' && peek_char? == '>'
+        consume_char
+        consume_char
+        error "abrupt-closing-of-empty-comment" # <!--->
+        return Token::Comment.new("")
+      end
+
+      loop do
+        case current_char?
+        when nil
+          error "eof-in-comment"
+          break
+        when '-'
+          if consume?("-->")
+            break
+          elsif consume?("--!>")
+            error "incorrectly-closed-comment"
+            break
+          end
+        when '<'
+          if consume?("<!-->")
+            @buffer << "<!"
+            break
+          elsif match?("<!--")
+            error "nested-comment"
+            @buffer << consume_char
+            @buffer << consume_char
+            #if peek?(2)
+              next
+            #else
+            #  error "eof-in-comment"
+            #  break
+            #end
+          end
+        end
+        @buffer << consume_char
+      end
+
+      Token::Comment.new(buffer_to_s)
+    end
+
+    protected def lex_bogus_comment
+      while char = current_char?
+        case char
+        when '>'
+          consume_char
+          break
+        when '\u0000'
+          consume_char
+          @buffer << '\uFFFD'
+        else
+          @buffer << consume_char
+        end
+      end
+      Token::Comment.new(buffer_to_s)
+    end
+
+    # TODO: rewrite as per the HTML5 living standard tokenization rules
+    # OPTIMIZE: simplify
+    # OPTIMIZE: use @buffer
     protected def lex_cdata_section
       rsqb = 0
 
@@ -350,29 +489,27 @@ module HTML
       Token::Character.new(data)
     end
 
-    protected def lex_data(first_char = nil)
-      data = String.build do |str|
-        if first_char
-          str << first_char
-        end
-        while char = current_char?
-          case char
-          when '<'
-            break unless peek_char? == '>'
-            str << consume_char
-          when '&'
-            consume_entity(str)
-          when '\u0000'
-            error "unexpected-null-character"
-            str << consume_char
-          else
-            str << consume_char
-          end
+    protected def lex_data
+      while char = current_char?
+        case char
+        when '<'
+          break unless peek_char? == '>'
+          @buffer << consume_char
+        when '&'
+          consume_entity(@buffer)
+        when '\u0000'
+          error "unexpected-null-character"
+          @buffer << consume_char
+        else
+          @buffer << consume_char
         end
       end
-      Token::Character.new(data)
+
+      Token::Character.new(buffer_to_s)
     end
 
+    # TODO: rename as #consume_character_reference
+    # TODO: consume directly into @buffer
     protected def consume_entity(io, attr = false)
       consume_char
 
@@ -571,6 +708,8 @@ module HTML
         @column += 1
       end
 
+      # p [:current_char, normalized_char, @line, @column]
+
       normalized_char
     end
 
@@ -584,6 +723,7 @@ module HTML
       end
     end
 
+    # OPTIMIZE: allow to peek up to N chars
     protected def peek_char?
       if char = @peek_char
         char
@@ -595,20 +735,27 @@ module HTML
     end
 
     protected def skip_s
-      while {' ', '\t', '\r', '\n'}.includes?(current_char?)
+      i = 0
+      while {' ', '\t', '\n', '\f'}.includes?(current_char?)
+        i+= 1
         consume_char
       end
+      i
     end
 
     @current_char : Char?
     @peek_char : Char?
 
     protected def consume_char
-      char = @current_char
+      char = current_char?
       @current_char = nil
+      current_char? if @peek_char
       char
     end
 
+    # TODO: follow the HTML5 living standard rules
+    # OPTIMIZE: use StringPool
+    # OPTIMIZE: use @buffer
     protected def consume_name(downcase = true, valid = true)
       if valid
         case current_char?
@@ -636,21 +783,41 @@ module HTML
       end
     end
 
-    protected def consume?(str : String)
-      i = 1
+    # OPTIMIZE: use a local buffer to peek N chars at once
+    protected def consume?(str : String, case_insensitive = false)
+      pos, curr, peek, line, column = @io.tell, @current_char, @peek_char, @line, @column
 
       str.each_char do |char|
-        if current_char? == char
+        if current_char? == char || (case_insensitive && current_char? == char.downcase)
           consume_char
-          i += 1
         else
-          @io.seek(-i, IO::Seek::Current)
-          @current_char = nil
+          @io.seek(pos, IO::Seek::Set)
+          @current_char, @peek_char, @line, @column = curr, peek, line, column
           return false
         end
       end
 
       true
+    end
+
+    # OPTIMIZE: use a local buffer to peek N chars at once
+    protected def match?(str : String, case_insensitive = false)
+      pos, curr, peek, line, column = @io.tell, @current_char, @peek_char, @line, @column
+      matched = true
+
+      str.each_char do |char|
+        if current_char? == char || (case_insensitive && current_char? == char.downcase)
+          consume_char
+        else
+          matched = false
+          break
+        end
+      end
+
+      @io.seek(pos, IO::Seek::Set)
+      @current_char, @peek_char, @line, @column = curr, peek, line, column
+
+      matched
     end
 
     protected def consume_until(&)
@@ -661,7 +828,22 @@ module HTML
       end
     end
 
-    protected def error(code : String)
+    private def buffer_to_s
+      buffer_to_s { "" }
+    end
+
+    private def buffer_to_s(&)
+      if @buffer.bytesize == 0
+        yield
+      else
+        value = @buffer.to_s
+        @buffer.clear
+        value
+      end
+    end
+
+    # Override to handle tokenization errors.
+    def error(code : String)
     end
   end
 end
