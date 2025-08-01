@@ -4,11 +4,39 @@ require "json"
 require "../src/lexer"
 
 class Minitest::Test
-  def assert_lexes(input, output, file = __FILE__, line = __LINE__)
+  def assert_lexes(input, output, state = HTML::Lexer::State::DATA, tag_name = "__invalid", file = __FILE__, line = __LINE__)
+    # puts
+    # puts state
+    # puts tag_name
+    # p input
+    # puts output
+    # puts
+
+    tokens = [] of HTML::Lexer::Token
+
     lexer = HTML::Lexer.new(input)
+    lexer.state = state
+
+    token = lexer.next(tag_name)
+    loop do
+      if token.is_a?(HTML::Lexer::Token::Character)
+        while (peek = lexer.next(tag_name)).is_a?(HTML::Lexer::Token::Character)
+          token = HTML::Lexer::Token::Character.new(token.data + peek.data)
+        end
+        tokens << token
+        token = peek
+      end
+      tokens << token
+      break if token.is_a?(HTML::Lexer::Token::EOF)
+      token = lexer.next(tag_name)
+    end
 
     JSON.parse(output).as_a.each do |expected|
-      case token = lexer.next
+      # p expected
+      token = tokens.shift? || lexer.next(tag_name)
+      # p token
+
+      case token
       in HTML::Lexer::Token::Doctype
         assert_equal expected[0], "DOCTYPE", nil, file, line
         assert_equal expected[1], token.name, nil, file, line
@@ -45,6 +73,6 @@ class Minitest::Test
     end
 
     # must have consumed everything
-    assert_instance_of HTML::Lexer::Token::EOF, lexer.next, nil, file, line
+    assert_instance_of HTML::Lexer::Token::EOF, tokens.shift?, nil, file, line
   end
 end

@@ -1,46 +1,56 @@
 require "./spec_helper"
 describe "html5lib-tests/tokenizer/contentModelFlags.test" do
   it "contentModelFlags:PLAINTEXT content model flag" do
-    skip
+    assert_lexes "<head>&body;", "[[\"Character\",\"<head>&body;\"]]", HTML::Lexer::State::PLAINTEXT, "plaintext"
   end
   it "contentModelFlags:PLAINTEXT with seeming close tag" do
-    skip
+    assert_lexes "</plaintext>&body;", "[[\"Character\",\"</plaintext>&body;\"]]", HTML::Lexer::State::PLAINTEXT, "plaintext"
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT" do
-    skip
+    assert_lexes "foo</xmp>", "[[\"Character\",\"foo\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo</xmp>", "[[\"Character\",\"foo\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (case-insensitivity)" do
-    skip
+    assert_lexes "foo</xMp>", "[[\"Character\",\"foo\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo</xMp>", "[[\"Character\",\"foo\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (ending with space)" do
-    skip
+    assert_lexes "foo</xmp ", "[[\"Character\",\"foo\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo</xmp ", "[[\"Character\",\"foo\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (ending with EOF)" do
-    skip
+    assert_lexes "foo</xmp", "[[\"Character\",\"foo</xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo</xmp", "[[\"Character\",\"foo</xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT (ending with slash)" do
-    skip
+    assert_lexes "foo</xmp/", "[[\"Character\",\"foo\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo</xmp/", "[[\"Character\",\"foo\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag not closing RCDATA or RAWTEXT (ending with left-angle-bracket)" do
-    skip
+    assert_lexes "foo</xmp<", "[[\"Character\",\"foo</xmp<\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo</xmp<", "[[\"Character\",\"foo</xmp<\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag with incorrect name in RCDATA or RAWTEXT" do
-    skip
+    assert_lexes "</foo>bar</xmp>", "[[\"Character\",\"</foo>bar\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</foo>bar</xmp>", "[[\"Character\",\"</foo>bar\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:Partial end tags leading straight into partial end tags" do
-    skip
+    assert_lexes "</xmp</xmp</xmp>", "[[\"Character\",\"</xmp</xmp\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</xmp</xmp</xmp>", "[[\"Character\",\"</xmp</xmp\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag with incorrect name in RCDATA or RAWTEXT (starting like correct name)" do
-    skip
+    assert_lexes "</foo>bar</xmpaar>", "[[\"Character\",\"</foo>bar</xmpaar>\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</foo>bar</xmpaar>", "[[\"Character\",\"</foo>bar</xmpaar>\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:End tag closing RCDATA or RAWTEXT, switching back to PCDATA" do
-    skip
+    assert_lexes "foo</xmp></baz>", "[[\"Character\",\"foo\"],[\"EndTag\",\"xmp\"],[\"EndTag\",\"baz\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo</xmp></baz>", "[[\"Character\",\"foo\"],[\"EndTag\",\"xmp\"],[\"EndTag\",\"baz\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:RAWTEXT w/ something looking like an entity" do
-    skip
+    assert_lexes "&foo;", "[[\"Character\",\"&foo;\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "contentModelFlags:RCDATA w/ an entity" do
-    skip
+    assert_lexes "&lt;", "[[\"Character\",\"<\"]]", HTML::Lexer::State::RCDATA, "textarea"
   end
 end
 describe "html5lib-tests/tokenizer/domjs.test" do
@@ -66,79 +76,89 @@ describe "html5lib-tests/tokenizer/domjs.test" do
     skip
   end
   it "domjs:EOF in script HTML comment" do
-    skip
+    assert_lexes "<!--test", "[[\"Character\",\"<!--test\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:EOF in script HTML comment after dash" do
-    skip
+    assert_lexes "<!--test-", "[[\"Character\",\"<!--test-\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:EOF in script HTML comment after dash dash" do
-    skip
+    assert_lexes "<!--test--", "[[\"Character\",\"<!--test--\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:EOF in script HTML comment double escaped after dash" do
-    skip
+    assert_lexes "<!--<script>-", "[[\"Character\",\"<!--<script>-\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:EOF in script HTML comment double escaped after dash dash" do
-    skip
+    assert_lexes "<!--<script>--", "[[\"Character\",\"<!--<script>--\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:EOF in script HTML comment - double escaped" do
-    skip
+    assert_lexes "<!--<script>", "[[\"Character\",\"<!--<script>\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:Dash in script HTML comment" do
-    skip
+    assert_lexes "<!-- - -->", "[[\"Character\",\"<!-- - -->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:Dash less-than in script HTML comment" do
-    skip
+    assert_lexes "<!-- -< -->", "[[\"Character\",\"<!-- -< -->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:Dash at end of script HTML comment" do
-    skip
+    assert_lexes "<!--test--->", "[[\"Character\",\"<!--test--->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "domjs:</script> in script HTML comment" do
-    skip
+    assert_lexes "<!-- </script> --></script>", "[[\"Character\",\"<!-- \"],[\"EndTag\",\"script\"],[\"Character\",\" -->\"],[\"EndTag\",\"script\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:</script> in script HTML comment - double escaped" do
-    skip
+    assert_lexes "<!-- <script></script> --></script>", "[[\"Character\",\"<!-- <script></script> -->\"],[\"EndTag\",\"script\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:</script> in script HTML comment - double escaped with nested <script>" do
-    skip
+    assert_lexes "<!-- <script><script></script></script> --></script>", "[[\"Character\",\"<!-- <script><script></script>\"],[\"EndTag\",\"script\"],[\"Character\",\" -->\"],[\"EndTag\",\"script\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:</script> in script HTML comment - double escaped with abrupt end" do
-    skip
+    assert_lexes "<!-- <script>--></script> --></script>", "[[\"Character\",\"<!-- <script>-->\"],[\"EndTag\",\"script\"],[\"Character\",\" -->\"],[\"EndTag\",\"script\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:Incomplete start tag in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<scrip></script>-->", "[[\"Character\",\"<!--<scrip>\"],[\"EndTag\",\"script\"],[\"Character\",\"-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:Unclosed start tag in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script</script>-->", "[[\"Character\",\"<!--<script\"],[\"EndTag\",\"script\"],[\"Character\",\"-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:Incomplete end tag in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script></scrip>-->", "[[\"Character\",\"<!--<script></scrip>-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:Unclosed end tag in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script></script-->", "[[\"Character\",\"<!--<script></script-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "script"
   end
   it "domjs:leading U+FEFF must pass through" do
     skip
   end
   it "domjs:Non BMP-charref in RCDATA" do
-    skip
+    assert_lexes "&NotEqualTilde;", "[[\"Character\",\"≂̸\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
   end
   it "domjs:Bad charref in RCDATA" do
-    skip
+    assert_lexes "&NotEqualTild;", "[[\"Character\",\"&NotEqualTild;\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
   end
   it "domjs:lowercase endtags" do
-    skip
+    assert_lexes "</XMP>", "[[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</XMP>", "[[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
+    assert_lexes "</XMP>", "[[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::SCRIPT_DATA, "xmp"
   end
   it "domjs:bad endtag (space before name)" do
-    skip
+    assert_lexes "</ XMP>", "[[\"Character\",\"</ XMP>\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</ XMP>", "[[\"Character\",\"</ XMP>\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
+    assert_lexes "</ XMP>", "[[\"Character\",\"</ XMP>\"]]", HTML::Lexer::State::SCRIPT_DATA, "xmp"
   end
   it "domjs:bad endtag (not matching last start tag)" do
-    skip
+    assert_lexes "</xm>", "[[\"Character\",\"</xm>\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</xm>", "[[\"Character\",\"</xm>\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
+    assert_lexes "</xm>", "[[\"Character\",\"</xm>\"]]", HTML::Lexer::State::SCRIPT_DATA, "xmp"
   end
   it "domjs:bad endtag (without close bracket)" do
-    skip
+    assert_lexes "</xm ", "[[\"Character\",\"</xm \"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</xm ", "[[\"Character\",\"</xm \"]]", HTML::Lexer::State::RAWTEXT, "xmp"
+    assert_lexes "</xm ", "[[\"Character\",\"</xm \"]]", HTML::Lexer::State::SCRIPT_DATA, "xmp"
   end
   it "domjs:bad endtag (trailing solidus)" do
-    skip
+    assert_lexes "</xm/", "[[\"Character\",\"</xm/\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "</xm/", "[[\"Character\",\"</xm/\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
+    assert_lexes "</xm/", "[[\"Character\",\"</xm/\"]]", HTML::Lexer::State::SCRIPT_DATA, "xmp"
   end
   it "domjs:Non BMP-charref in attribute" do
     assert_lexes "<p id=\"&NotEqualTilde;\">", "[[\"StartTag\",\"p\",{\"id\":\"≂̸\"}]]"
@@ -153,25 +173,25 @@ describe "html5lib-tests/tokenizer/domjs.test" do
     assert_lexes "<![CDATA[foo]]>", "[[\"Comment\",\"[CDATA[foo]]\"]]"
   end
   it "domjs:CDATA content" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "domjs:CDATA followed by HTML content" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "domjs:CDATA with extra bracket" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "domjs:CDATA without end marker" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "domjs:CDATA with single bracket ending" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "domjs:CDATA with two brackets ending" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "domjs:HTML tag in script data" do
-    skip
+    assert_lexes "<b>hello world</b>", "[[\"Character\",\"<b>hello world</b>\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
 end
 describe "html5lib-tests/tokenizer/entities.test" do
@@ -418,19 +438,23 @@ describe "html5lib-tests/tokenizer/entities.test" do
 end
 describe "html5lib-tests/tokenizer/escapeFlag.test" do
   it "escapeFlag:Commented close tag in RCDATA or RAWTEXT" do
-    skip
+    assert_lexes "foo<!--</xmp>--></xmp>", "[[\"Character\",\"foo<!--\"],[\"EndTag\",\"xmp\"],[\"Character\",\"-->\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo<!--</xmp>--></xmp>", "[[\"Character\",\"foo<!--\"],[\"EndTag\",\"xmp\"],[\"Character\",\"-->\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "escapeFlag:Bogus comment in RCDATA or RAWTEXT" do
-    skip
+    assert_lexes "foo<!-->baz</xmp>", "[[\"Character\",\"foo<!-->baz\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo<!-->baz</xmp>", "[[\"Character\",\"foo<!-->baz\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "escapeFlag:End tag surrounded by bogus comment in RCDATA or RAWTEXT" do
-    skip
+    assert_lexes "foo<!--></xmp><!-->baz</xmp>", "[[\"Character\",\"foo<!-->\"],[\"EndTag\",\"xmp\"],[\"Comment\",\"\"],[\"Character\",\"baz\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo<!--></xmp><!-->baz</xmp>", "[[\"Character\",\"foo<!-->\"],[\"EndTag\",\"xmp\"],[\"Comment\",\"\"],[\"Character\",\"baz\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
   it "escapeFlag:Commented entities in RCDATA" do
-    skip
+    assert_lexes " &amp; <!-- &amp; --> &amp; </xmp>", "[[\"Character\",\" & <!-- & --> & \"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
   end
   it "escapeFlag:Incorrect comment ending sequences in RCDATA or RAWTEXT" do
-    skip
+    assert_lexes "foo<!-- x --x>x-- >x--!>x--<></xmp>", "[[\"Character\",\"foo<!-- x --x>x-- >x--!>x--<>\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RCDATA, "xmp"
+    assert_lexes "foo<!-- x --x>x-- >x--!>x--<></xmp>", "[[\"Character\",\"foo<!-- x --x>x-- >x--!>x--<>\"],[\"EndTag\",\"xmp\"]]", HTML::Lexer::State::RAWTEXT, "xmp"
   end
 end
 describe "html5lib-tests/tokenizer/namedEntities.test" do
@@ -14181,43 +14205,43 @@ describe "html5lib-tests/tokenizer/test1.test" do
     assert_lexes "<!-- <<!--test-->", "[[\"Comment\",\" <<!--test\"]]"
   end
   it "test1:< in script data" do
-    skip
+    assert_lexes "<test-->", "[[\"Character\",\"<test-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:<! in script data" do
-    skip
+    assert_lexes "<!test-->", "[[\"Character\",\"<!test-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:<!- in script data" do
-    skip
+    assert_lexes "<!-test-->", "[[\"Character\",\"<!-test-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:Escaped script data" do
-    skip
+    assert_lexes "<!--test-->", "[[\"Character\",\"<!--test-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:< in script HTML comment" do
-    skip
+    assert_lexes "<!-- < test -->", "[[\"Character\",\"<!-- < test -->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:</ in script HTML comment" do
-    skip
+    assert_lexes "<!-- </ test -->", "[[\"Character\",\"<!-- </ test -->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:Start tag in script HTML comment" do
-    skip
+    assert_lexes "<!-- <test> -->", "[[\"Character\",\"<!-- <test> -->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:End tag in script HTML comment" do
-    skip
+    assert_lexes "<!-- </test> -->", "[[\"Character\",\"<!-- </test> -->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:- in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script>-</script>-->", "[[\"Character\",\"<!--<script>-</script>-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:-- in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script>--</script>-->", "[[\"Character\",\"<!--<script>--</script>-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:--- in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script>---</script>-->", "[[\"Character\",\"<!--<script>---</script>-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:- spaced in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script> - </script>-->", "[[\"Character\",\"<!--<script> - </script>-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:-- spaced in script HTML comment double escaped" do
-    skip
+    assert_lexes "<!--<script> -- </script>-->", "[[\"Character\",\"<!--<script> -- </script>-->\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test1:Ampersand EOF" do
     assert_lexes "&", "[[\"Character\",\"&\"]]"
@@ -14428,208 +14452,344 @@ describe "html5lib-tests/tokenizer/test2.test" do
 end
 describe "html5lib-tests/tokenizer/test3.test" do
   it "test3:[empty]" do
-    skip
+    assert_lexes "", "[]"
+    assert_lexes "", "[]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "", "[]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "", "[]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "", "[]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:[empty]" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:\\u0009" do
-    skip
+    assert_lexes "\t", "[[\"Character\",\"\\t\"]]"
+    assert_lexes "\t", "[[\"Character\",\"\\t\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "\t", "[[\"Character\",\"\\t\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "\t", "[[\"Character\",\"\\t\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "\t", "[[\"Character\",\"\\t\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:\\u0009" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:\\u000A" do
-    skip
+    assert_lexes "\n", "[[\"Character\",\"\\n\"]]"
+    assert_lexes "\n", "[[\"Character\",\"\\n\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "\n", "[[\"Character\",\"\\n\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "\n", "[[\"Character\",\"\\n\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "\n", "[[\"Character\",\"\\n\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:\\u000A" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:\\u000B" do
-    skip
+    assert_lexes "\v", "[[\"Character\",\"\\u000b\"]]"
+    assert_lexes "\v", "[[\"Character\",\"\\u000b\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "\v", "[[\"Character\",\"\\u000b\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "\v", "[[\"Character\",\"\\u000b\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "\v", "[[\"Character\",\"\\u000b\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:\\u000B" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:\\u000C" do
-    skip
+    assert_lexes "\f", "[[\"Character\",\"\\f\"]]"
+    assert_lexes "\f", "[[\"Character\",\"\\f\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "\f", "[[\"Character\",\"\\f\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "\f", "[[\"Character\",\"\\f\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "\f", "[[\"Character\",\"\\f\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:\\u000C" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3: " do
-    skip
+    assert_lexes " ", "[[\"Character\",\" \"]]"
+    assert_lexes " ", "[[\"Character\",\" \"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes " ", "[[\"Character\",\" \"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes " ", "[[\"Character\",\" \"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes " ", "[[\"Character\",\" \"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3: " do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:!" do
-    skip
+    assert_lexes "!", "[[\"Character\",\"!\"]]"
+    assert_lexes "!", "[[\"Character\",\"!\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "!", "[[\"Character\",\"!\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "!", "[[\"Character\",\"!\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "!", "[[\"Character\",\"!\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:!" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:\"" do
-    skip
+    assert_lexes "\"", "[[\"Character\",\"\\\"\"]]"
+    assert_lexes "\"", "[[\"Character\",\"\\\"\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "\"", "[[\"Character\",\"\\\"\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "\"", "[[\"Character\",\"\\\"\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "\"", "[[\"Character\",\"\\\"\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:\"" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:%" do
-    skip
+    assert_lexes "%", "[[\"Character\",\"%\"]]"
+    assert_lexes "%", "[[\"Character\",\"%\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "%", "[[\"Character\",\"%\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "%", "[[\"Character\",\"%\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "%", "[[\"Character\",\"%\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:%" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:&" do
-    skip
+    assert_lexes "&", "[[\"Character\",\"&\"]]"
+    assert_lexes "&", "[[\"Character\",\"&\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "&", "[[\"Character\",\"&\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "&", "[[\"Character\",\"&\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "&", "[[\"Character\",\"&\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:&" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:'" do
-    skip
+    assert_lexes "'", "[[\"Character\",\"'\"]]"
+    assert_lexes "'", "[[\"Character\",\"'\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "'", "[[\"Character\",\"'\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "'", "[[\"Character\",\"'\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "'", "[[\"Character\",\"'\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:'" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:," do
-    skip
+    assert_lexes ",", "[[\"Character\",\",\"]]"
+    assert_lexes ",", "[[\"Character\",\",\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ",", "[[\"Character\",\",\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ",", "[[\"Character\",\",\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ",", "[[\"Character\",\",\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:," do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:-" do
-    skip
+    assert_lexes "-", "[[\"Character\",\"-\"]]"
+    assert_lexes "-", "[[\"Character\",\"-\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "-", "[[\"Character\",\"-\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "-", "[[\"Character\",\"-\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "-", "[[\"Character\",\"-\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:-" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:." do
-    skip
+    assert_lexes ".", "[[\"Character\",\".\"]]"
+    assert_lexes ".", "[[\"Character\",\".\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ".", "[[\"Character\",\".\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ".", "[[\"Character\",\".\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ".", "[[\"Character\",\".\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:." do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:/" do
-    skip
+    assert_lexes "/", "[[\"Character\",\"/\"]]"
+    assert_lexes "/", "[[\"Character\",\"/\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "/", "[[\"Character\",\"/\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "/", "[[\"Character\",\"/\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "/", "[[\"Character\",\"/\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:/" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:0" do
-    skip
+    assert_lexes "0", "[[\"Character\",\"0\"]]"
+    assert_lexes "0", "[[\"Character\",\"0\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "0", "[[\"Character\",\"0\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "0", "[[\"Character\",\"0\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "0", "[[\"Character\",\"0\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:0" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:1" do
-    skip
+    assert_lexes "1", "[[\"Character\",\"1\"]]"
+    assert_lexes "1", "[[\"Character\",\"1\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "1", "[[\"Character\",\"1\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "1", "[[\"Character\",\"1\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "1", "[[\"Character\",\"1\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:1" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:9" do
-    skip
+    assert_lexes "9", "[[\"Character\",\"9\"]]"
+    assert_lexes "9", "[[\"Character\",\"9\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "9", "[[\"Character\",\"9\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "9", "[[\"Character\",\"9\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "9", "[[\"Character\",\"9\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:9" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;" do
-    skip
+    assert_lexes ";", "[[\"Character\",\";\"]]"
+    assert_lexes ";", "[[\"Character\",\";\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";", "[[\"Character\",\";\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";", "[[\"Character\",\";\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";", "[[\"Character\",\";\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;=" do
-    skip
+    assert_lexes ";=", "[[\"Character\",\";=\"]]"
+    assert_lexes ";=", "[[\"Character\",\";=\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";=", "[[\"Character\",\";=\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";=", "[[\"Character\",\";=\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";=", "[[\"Character\",\";=\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;=" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;>" do
-    skip
+    assert_lexes ";>", "[[\"Character\",\";>\"]]"
+    assert_lexes ";>", "[[\"Character\",\";>\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";>", "[[\"Character\",\";>\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";>", "[[\"Character\",\";>\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";>", "[[\"Character\",\";>\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;>" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;?" do
-    skip
+    assert_lexes ";?", "[[\"Character\",\";?\"]]"
+    assert_lexes ";?", "[[\"Character\",\";?\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";?", "[[\"Character\",\";?\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";?", "[[\"Character\",\";?\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";?", "[[\"Character\",\";?\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;?" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;@" do
-    skip
+    assert_lexes ";@", "[[\"Character\",\";@\"]]"
+    assert_lexes ";@", "[[\"Character\",\";@\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";@", "[[\"Character\",\";@\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";@", "[[\"Character\",\";@\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";@", "[[\"Character\",\";@\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;@" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;A" do
-    skip
+    assert_lexes ";A", "[[\"Character\",\";A\"]]"
+    assert_lexes ";A", "[[\"Character\",\";A\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";A", "[[\"Character\",\";A\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";A", "[[\"Character\",\";A\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";A", "[[\"Character\",\";A\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;A" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;B" do
-    skip
+    assert_lexes ";B", "[[\"Character\",\";B\"]]"
+    assert_lexes ";B", "[[\"Character\",\";B\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";B", "[[\"Character\",\";B\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";B", "[[\"Character\",\";B\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";B", "[[\"Character\",\";B\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;B" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;Y" do
-    skip
+    assert_lexes ";Y", "[[\"Character\",\";Y\"]]"
+    assert_lexes ";Y", "[[\"Character\",\";Y\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";Y", "[[\"Character\",\";Y\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";Y", "[[\"Character\",\";Y\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";Y", "[[\"Character\",\";Y\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;Y" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;Z" do
-    skip
+    assert_lexes ";Z", "[[\"Character\",\";Z\"]]"
+    assert_lexes ";Z", "[[\"Character\",\";Z\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";Z", "[[\"Character\",\";Z\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";Z", "[[\"Character\",\";Z\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";Z", "[[\"Character\",\";Z\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;Z" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;`" do
-    skip
+    assert_lexes ";`", "[[\"Character\",\";`\"]]"
+    assert_lexes ";`", "[[\"Character\",\";`\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";`", "[[\"Character\",\";`\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";`", "[[\"Character\",\";`\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";`", "[[\"Character\",\";`\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;`" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;a" do
-    skip
+    assert_lexes ";a", "[[\"Character\",\";a\"]]"
+    assert_lexes ";a", "[[\"Character\",\";a\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";a", "[[\"Character\",\";a\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";a", "[[\"Character\",\";a\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";a", "[[\"Character\",\";a\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;a" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;b" do
-    skip
+    assert_lexes ";b", "[[\"Character\",\";b\"]]"
+    assert_lexes ";b", "[[\"Character\",\";b\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";b", "[[\"Character\",\";b\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";b", "[[\"Character\",\";b\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";b", "[[\"Character\",\";b\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;b" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;y" do
-    skip
+    assert_lexes ";y", "[[\"Character\",\";y\"]]"
+    assert_lexes ";y", "[[\"Character\",\";y\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";y", "[[\"Character\",\";y\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";y", "[[\"Character\",\";y\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";y", "[[\"Character\",\";y\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;y" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;z" do
-    skip
+    assert_lexes ";z", "[[\"Character\",\";z\"]]"
+    assert_lexes ";z", "[[\"Character\",\";z\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";z", "[[\"Character\",\";z\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";z", "[[\"Character\",\";z\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";z", "[[\"Character\",\";z\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;z" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;{" do
-    skip
+    assert_lexes ";{", "[[\"Character\",\";{\"]]"
+    assert_lexes ";{", "[[\"Character\",\";{\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";{", "[[\"Character\",\";{\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";{", "[[\"Character\",\";{\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";{", "[[\"Character\",\";{\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;{" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:;\\uDBC0\\uDC00" do
-    skip
+    assert_lexes ";\u{100000}", "[[\"Character\",\";\u{100000}\"]]"
+    assert_lexes ";\u{100000}", "[[\"Character\",\";\u{100000}\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ";\u{100000}", "[[\"Character\",\";\u{100000}\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ";\u{100000}", "[[\"Character\",\";\u{100000}\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ";\u{100000}", "[[\"Character\",\";\u{100000}\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:;\\uDBC0\\uDC00" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:<" do
     assert_lexes "<", "[[\"Character\",\"<\"]]"
@@ -19108,94 +19268,154 @@ describe "html5lib-tests/tokenizer/test3.test" do
     assert_lexes "<\u{100000}", "[[\"Character\",\"<\u{100000}\"]]"
   end
   it "test3:=" do
-    skip
+    assert_lexes "=", "[[\"Character\",\"=\"]]"
+    assert_lexes "=", "[[\"Character\",\"=\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "=", "[[\"Character\",\"=\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "=", "[[\"Character\",\"=\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "=", "[[\"Character\",\"=\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:=" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:>" do
-    skip
+    assert_lexes ">", "[[\"Character\",\">\"]]"
+    assert_lexes ">", "[[\"Character\",\">\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes ">", "[[\"Character\",\">\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes ">", "[[\"Character\",\">\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes ">", "[[\"Character\",\">\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:>" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:?" do
-    skip
+    assert_lexes "?", "[[\"Character\",\"?\"]]"
+    assert_lexes "?", "[[\"Character\",\"?\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "?", "[[\"Character\",\"?\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "?", "[[\"Character\",\"?\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "?", "[[\"Character\",\"?\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:?" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:@" do
-    skip
+    assert_lexes "@", "[[\"Character\",\"@\"]]"
+    assert_lexes "@", "[[\"Character\",\"@\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "@", "[[\"Character\",\"@\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "@", "[[\"Character\",\"@\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "@", "[[\"Character\",\"@\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:@" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:A" do
-    skip
+    assert_lexes "A", "[[\"Character\",\"A\"]]"
+    assert_lexes "A", "[[\"Character\",\"A\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "A", "[[\"Character\",\"A\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "A", "[[\"Character\",\"A\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "A", "[[\"Character\",\"A\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:A" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:B" do
-    skip
+    assert_lexes "B", "[[\"Character\",\"B\"]]"
+    assert_lexes "B", "[[\"Character\",\"B\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "B", "[[\"Character\",\"B\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "B", "[[\"Character\",\"B\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "B", "[[\"Character\",\"B\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:B" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:Y" do
-    skip
+    assert_lexes "Y", "[[\"Character\",\"Y\"]]"
+    assert_lexes "Y", "[[\"Character\",\"Y\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "Y", "[[\"Character\",\"Y\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "Y", "[[\"Character\",\"Y\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "Y", "[[\"Character\",\"Y\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:Y" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:Z" do
-    skip
+    assert_lexes "Z", "[[\"Character\",\"Z\"]]"
+    assert_lexes "Z", "[[\"Character\",\"Z\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "Z", "[[\"Character\",\"Z\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "Z", "[[\"Character\",\"Z\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "Z", "[[\"Character\",\"Z\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:Z" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:`" do
-    skip
+    assert_lexes "`", "[[\"Character\",\"`\"]]"
+    assert_lexes "`", "[[\"Character\",\"`\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "`", "[[\"Character\",\"`\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "`", "[[\"Character\",\"`\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "`", "[[\"Character\",\"`\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:`" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:a" do
-    skip
+    assert_lexes "a", "[[\"Character\",\"a\"]]"
+    assert_lexes "a", "[[\"Character\",\"a\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "a", "[[\"Character\",\"a\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "a", "[[\"Character\",\"a\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "a", "[[\"Character\",\"a\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:a" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:b" do
-    skip
+    assert_lexes "b", "[[\"Character\",\"b\"]]"
+    assert_lexes "b", "[[\"Character\",\"b\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "b", "[[\"Character\",\"b\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "b", "[[\"Character\",\"b\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "b", "[[\"Character\",\"b\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:b" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:y" do
-    skip
+    assert_lexes "y", "[[\"Character\",\"y\"]]"
+    assert_lexes "y", "[[\"Character\",\"y\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "y", "[[\"Character\",\"y\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "y", "[[\"Character\",\"y\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "y", "[[\"Character\",\"y\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:y" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:z" do
-    skip
+    assert_lexes "z", "[[\"Character\",\"z\"]]"
+    assert_lexes "z", "[[\"Character\",\"z\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "z", "[[\"Character\",\"z\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "z", "[[\"Character\",\"z\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "z", "[[\"Character\",\"z\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:z" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:{" do
-    skip
+    assert_lexes "{", "[[\"Character\",\"{\"]]"
+    assert_lexes "{", "[[\"Character\",\"{\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "{", "[[\"Character\",\"{\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "{", "[[\"Character\",\"{\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "{", "[[\"Character\",\"{\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:{" do
-    skip
+    skip # ["CDATA section state"]
   end
   it "test3:\\uDBC0\\uDC00" do
-    skip
+    assert_lexes "\u{100000}", "[[\"Character\",\"\u{100000}\"]]"
+    assert_lexes "\u{100000}", "[[\"Character\",\"\u{100000}\"]]", HTML::Lexer::State::PLAINTEXT, "__invalid__"
+    assert_lexes "\u{100000}", "[[\"Character\",\"\u{100000}\"]]", HTML::Lexer::State::RCDATA, "__invalid__"
+    assert_lexes "\u{100000}", "[[\"Character\",\"\u{100000}\"]]", HTML::Lexer::State::RAWTEXT, "__invalid__"
+    assert_lexes "\u{100000}", "[[\"Character\",\"\u{100000}\"]]", HTML::Lexer::State::SCRIPT_DATA, "__invalid__"
   end
   it "test3:\\uDBC0\\uDC00" do
-    skip
+    skip # ["CDATA section state"]
   end
 end
 describe "html5lib-tests/tokenizer/test4.test" do

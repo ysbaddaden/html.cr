@@ -1,12 +1,5 @@
 require "./entities"
 
-# # :nodoc:
-# class String::Builder
-#   # :nodoc:
-#   def bytesize=(@bytesize : Int32)
-#   end
-# end
-
 # :nodoc:
 lib LibIntrinsics
   fun llvm_sadd_sat_i32 = "llvm.sadd.sat.i32"(Int32, Int32) : Int32
@@ -68,8 +61,10 @@ module HTML
 
       struct EndTag < Token
         getter name : String
+        getter? attributes : Hash(String, String)?
+        getter? empty : Bool
 
-        def initialize(@name)
+        def initialize(@name, @attributes, @empty)
         end
       end
 
@@ -98,60 +93,233 @@ module HTML
     getter line = 1
     getter column = 0
 
+    property state : State
+
     def initialize(@io : IO)
       @attributes = Hash(String, String).new
       @buffer = IO::Memory.new
       @quirks_mode = false
+      @state = State::DATA
 
       # TODO: determine encoding
       # https://dev.w3.org/html5/spec-LC/parsing.html#determining-the-character-encoding
     end
 
-    def next : Token
+    enum State
+      DATA
+      RCDATA
+      RAWTEXT
+      PLAINTEXT
+      SCRIPT_DATA
+    end
+
+    def next(tag_name = "") : Token
+      case @state
+      in State::DATA        then next_data
+      in State::RCDATA      then next_rcdata(tag_name)
+      in State::RAWTEXT     then next_rawtext(tag_name)
+      in State::PLAINTEXT   then next_plaintext
+      in State::SCRIPT_DATA then next_script_data(tag_name)
+      end
+    end
+
+    def next_data : Token
       case current_char?
       when nil
         Token::EOF.new
       when '<'
-        # lex_tag_open
         consume_char
-
-        case current_char?
-        when nil
-          error "eof-before-tag-name"
-          Token::Character.new("<")
-        when '!'
-          # lex_markup_declaration
-          consume_char
-          if consume?("--")
-            lex_comment
-          elsif consume?("[CDATA[")
-            lex_cdata_section
-          elsif consume?("DOCTYPE", case_insensitive: true)
-            lex_doctype
-          else
-            error "incorrectly-opened-comment"
-            lex_bogus_comment
-          end
-        when '/'
-          consume_char
-          if current_char? == '>'
-            consume_char
-            self.next
-          else
-            lex_end_tag
-          end
-        when '?'
-          error "unexpected-question-mark-instead-of-tag-name"
-          lex_bogus_comment
-        when 'a'..'z', 'A'..'Z'
-          lex_start_tag
-        else
-          error "invalid-first-character-of-tag-name"
-          @buffer << '<'
-          lex_data
-        end
+        lex_tag_open
       else
         lex_data
+      end
+    end
+
+    def next_rcdata(tag_name : String) : Token
+      loop do
+        case current_char?
+        when nil
+          return Token::EOF.new if @buffer.bytesize == 0
+          break
+        when '<'
+          if peek_char? == '/'
+            savepoint = create_savepoint
+            consume_char
+            consume_char
+            if appropriate_tag_token?(tag_name)
+              @state = State::DATA
+              return lex_end_tag if @buffer.bytesize == 0
+              restore_savepoint(*savepoint)
+              break
+            end
+            @buffer << "</"
+          else
+            @buffer << consume_char
+          end
+        when '&'
+          consume_character_reference
+        when '\u0000'
+          consume_char
+          @buffer << '\uFFFD'
+        else
+          @buffer << consume_char
+        end
+      end
+      Token::Character.new(buffer_to_s)
+    end
+
+    def next_rawtext(tag_name : String) : Token
+      loop do
+        case current_char?
+        when nil
+          return Token::EOF.new if @buffer.bytesize == 0
+          break
+        when '<'
+          savepoint = create_savepoint
+          consume_char
+          if current_char? == '/'
+            consume_char
+            if appropriate_tag_token?(tag_name)
+              @state = State::DATA
+              return lex_end_tag if @buffer.bytesize == 0
+              restore_savepoint(*savepoint)
+              break
+            end
+            @buffer << "</"
+          else
+            @buffer << '<'
+          end
+        when '\u0000'
+          consume_char
+          @buffer << '\uFFFD'
+        else
+          @buffer << consume_char
+        end
+      end
+      Token::Character.new(buffer_to_s)
+    end
+
+    def next_script_data(tag_name : String) : Token
+      escaped = 0
+
+      loop do
+        case current_char?
+        when nil
+          return Token::EOF.new if @buffer.bytesize == 0
+          break
+        when '<'
+          savepoint = create_savepoint
+          consume_char
+
+          case current_char?
+          when '/'
+            consume_char
+            if escaped == 2 && appropriate_tag_token?("script", consume: true)
+              escaped = 1
+              @buffer << "</script"
+            elsif appropriate_tag_token?(tag_name)
+              @state = State::DATA
+              return lex_end_tag if @buffer.bytesize == 0
+              restore_savepoint(*savepoint)
+              break
+            else
+              @buffer << "</"
+            end
+          when '!'
+            consume_char
+            if escaped == 0 && consume?("--")
+              escaped = 1
+              @buffer << "<!--"
+            else
+              @buffer << "<!"
+            end
+          else
+            if escaped == 1 && appropriate_tag_token?("script", consume: true)
+              escaped = 2
+              @buffer << "<script"
+            else
+              @buffer << '<'
+            end
+          end
+        when '-'
+          @buffer << consume_char
+          if escaped > 0 && consume?("->")
+            @buffer << "->"
+            escaped = 0
+          end
+        when '\u0000'
+          consume_char
+          @buffer << '\uFFFD'
+        else
+          @buffer << consume_char
+        end
+      end
+      Token::Character.new(buffer_to_s)
+    end
+
+    def next_plaintext : Token
+      loop do
+        case current_char?
+        when nil
+          return Token::EOF.new if @buffer.bytesize == 0
+          break
+        when '\u0000'
+          consume_char
+          @buffer << '\uFFFD'
+        else
+          @buffer << consume_char
+        end
+      end
+      Token::Character.new(buffer_to_s)
+    end
+
+    protected def appropriate_tag_token?(tag_name, consume = false)
+      valid = false
+
+      match?(tag_name, case_insensitive: true) do |next_char|
+        valid = next_char.in?({'>', '/', ' ', '\t', '\n', '\f'})
+      end
+
+      if valid && consume
+        tag_name.size.times { consume_char }
+      end
+
+      valid
+    end
+
+    protected def lex_tag_open
+      case current_char?
+      when nil
+        error "eof-before-tag-name"
+        Token::Character.new("<")
+      when '!'
+        consume_char
+        lex_markup_declaration
+      when '/'
+        consume_char
+        lex_end_tag
+      when '?'
+        error "unexpected-question-mark-instead-of-tag-name"
+        lex_bogus_comment
+      when 'a'..'z', 'A'..'Z'
+        lex_start_tag
+      else
+        error "invalid-first-character-of-tag-name"
+        @buffer << '<'
+        lex_data
+      end
+    end
+
+    protected def lex_markup_declaration
+      if consume?("--")
+        lex_comment
+      elsif consume?("[CDATA[")
+        lex_cdata_section
+      elsif consume?("DOCTYPE", case_insensitive: true)
+        lex_doctype
+      else
+        error "incorrectly-opened-comment"
+        lex_bogus_comment
       end
     end
 
@@ -293,110 +461,210 @@ module HTML
     end
 
     protected def lex_start_tag
-      if name = consume_name
-        empty = false
+      if x = consume_tag
+        Token::StartTag.new(*x)
+      else
+        Token::EOF.new
+      end
+    end
 
-        while current_char?
+    protected def lex_end_tag
+      case current_char?
+      when nil
+        error "eof-before-tag-name"
+        Token::Character.new("</")
+      when 'a'..'z', 'A'..'Z'
+        if x = consume_tag
+          Token::EndTag.new(*x)
+        else
+          Token::EOF.new
+        end
+      when '>'
+        consume_char
+        error "missing-end-tag-name"
+        return self.next
+      else
+        error "invalid-first-character-of-tag-name"
+        return lex_bogus_comment
+      end
+    end
+
+    protected def consume_tag
+      empty = false
+      attr = false
+
+      # tag name
+      loop do
+        case char = current_char?
+        when nil
+          error "eof-in-tag"
+          return
+        when 'A'..'Z'
+          consume_char
+          @buffer << char.downcase
+        when ' ', '\t', '\n', '\f'
+          consume_char
+          attr = true
+          break
+        when '>'
+          consume_char
+          break
+        when '/'
+          empty, attr = consume_self_closing_start_tag
+          break
+        when '\u0000'
+          consume_char
+          error "unexpected-null-character"
+          @buffer << '\uFFFD'
+        else
+          @buffer << consume_char
+        end
+      end
+
+      tag_name = buffer_to_s
+      attributes = nil
+
+      # attributes*
+      if attr
+        loop do
+          attr_name = nil
+          attr_value = ""
+
           skip_s
-
           case current_char?
+          when nil
+            error "eof-in-tag"
+            return
+          when '/'
+            empty, _ = consume_self_closing_start_tag
+            empty ? break : next
           when '>'
             consume_char
             break
-          when '<'
-            # ignore
-            consume_char
-          when '/'
-            consume_char
-            if current_char? == '>'
-              consume_char
-              empty = true
-              break
-            else
-              # ignore
-            end
+          when '='
+            error "unexpected-equals-sign-before-attribute-name"
+            @buffer << consume_char
+            attr_name = consume_attribute_name
+            skip_s
           else
-            attr_name, attr_value = lex_attribute
-            @attributes[attr_name] ||= attr_value
+            attr_name = consume_attribute_name
+            skip_s
+          end
+
+          if current_char? == '='
+            consume_char
+            skip_s
+
+            case current_char?
+            when '"', '\''
+              attr_value = consume_attribute_value(consume_char)
+              return unless attr_value
+            when '>'
+              error "missing-attribute-value"
+            else
+              attr_value = consume_attribute_value_unquoted
+              return unless attr_value
+            end
+          end
+
+          next unless attr_name
+
+          if @attributes.has_key?(attr_name)
+            error "duplicate-attribute"
+          else
+            @attributes[attr_name] = attr_value
           end
         end
-
-        attributes = nil
 
         unless @attributes.empty?
           attributes = @attributes.dup
           @attributes.clear
         end
-
-        Token::StartTag.new(name, attributes, empty)
-      else
-        lex_bogus_comment
       end
+
+      {tag_name, attributes, empty}
     end
 
-    protected def lex_end_tag
-      if name = consume_name
-        while current_char?
-          skip_s
-
-          case current_char?
-          when '>'
-            consume_char
-            break
-          when '/'
-            consume_char
-            consume_char if current_char? == '>'
-            break
-          else
-            lex_attribute
-          end
-        end
-
-        Token::EndTag.new(name)
-      else
-        lex_bogus_comment
-      end
-    end
-
-    protected def lex_attribute
-      name = consume_name(valid: false).not_nil!
-      skip_s
-      if current_char? == '='
+    protected def consume_self_closing_start_tag
+      consume_char
+      empty = attr = false
+      if current_char? == '>'
         consume_char
-        skip_s
-        value = lex_attr_value
+        empty = true
+      else
+        error "unexpected-solidus-in-tag"
+        attr = true
       end
-      {name, value || ""}
+      {empty, attr}
     end
 
-    protected def lex_attr_value
-      case current_char?
-      when '"', '\''
-        quote = consume_char
-        while char = current_char?
-          case char
-          when quote
-            consume_char
-            break
-          when '&'
-            consume_entity(@buffer, attr: true)
-          else
-            @buffer << consume_char
-          end
-        end
-      else
-        while char = current_char?
-          case char
-          when ' ', '\t', '\r', '\n', '>', '/'
-            break
-          when '&'
-            consume_entity(@buffer, attr: true)
-          else
-            @buffer << consume_char
-          end
+    protected def consume_attribute_name
+      loop do
+        case char = current_char?
+        when nil, ' ', '\t', '\n', '\f', '/', '>', '='
+          break
+        when 'A'..'Z'
+          consume_char
+          @buffer << char.downcase
+        when '\u0000'
+          consume_char
+          error "unexpected-null-character"
+          @buffer << '\uFFFD'
+        when '"', '\'', '<'
+          error "unexpected-character-in-attribute-name"
+          @buffer << consume_char
+        else
+          @buffer << consume_char
         end
       end
+      buffer_to_s
+    end
 
+    protected def consume_attribute_value(quote)
+      loop do
+        case char = current_char?
+        when nil
+          error "eof-in-tag"
+          return
+        when quote
+          consume_char
+          break
+        when '\u0000'
+          consume_char
+          error "unexpected-null-character"
+          @buffer << '\uFFFD'
+        when '&'
+          consume_character_reference(attr: true)
+        else
+          @buffer << consume_char
+        end
+      end
+      buffer_to_s
+    end
+
+    protected def consume_attribute_value_unquoted
+      loop do
+        case char = current_char?
+        when nil
+          error "eof-in-tag"
+          return
+        when ' ', '\t', '\n', '\f'
+          break
+        when '\u0000'
+          consume_char
+          error "unexpected-null-character"
+          @buffer << '\uFFFD'
+        when '>'
+          break
+        when '&'
+          consume_character_reference(attr: true)
+        when '"', '\'', '<', '=', '`'
+          error "unexpected-character-in-unquoted-attribute-value"
+          @buffer << consume_char
+        else
+          @buffer << consume_char
+        end
+      end
       buffer_to_s
     end
 
@@ -430,7 +698,7 @@ module HTML
           if consume?("<!-->")
             @buffer << "<!"
             break
-          elsif match?("<!--")
+          elsif match?("<!--") { }
             error "nested-comment"
             @buffer << consume_char
             @buffer << consume_char
@@ -464,29 +732,18 @@ module HTML
       Token::Comment.new(buffer_to_s)
     end
 
-    # TODO: rewrite as per the HTML5 living standard tokenization rules
-    # OPTIMIZE: simplify
-    # OPTIMIZE: use @buffer
     protected def lex_cdata_section
-      rsqb = 0
-
-      data = String.build do |str|
-        while char = current_char?
-          case char
-          when ']'
-            rsqb += 1
-          when '>'
-            break if rsqb >= 2
-          else
-            dash = 0
-          end
-          str << consume_char
+      loop do
+        if !current_char?
+          error "eof-in-cdata"
+          break
+        elsif consume?("]]>")
+          break
+        else
+          @buffer << consume_char
         end
       end
-
-      rsqb.clamp(..2).times { data = data.chomp(']') }
-
-      Token::Character.new(data)
+      Token::Character.new(buffer_to_s)
     end
 
     protected def lex_data
@@ -496,7 +753,7 @@ module HTML
           break unless peek_char? == '>'
           @buffer << consume_char
         when '&'
-          consume_entity(@buffer)
+          consume_character_reference
         when '\u0000'
           error "unexpected-null-character"
           @buffer << consume_char
@@ -504,34 +761,31 @@ module HTML
           @buffer << consume_char
         end
       end
-
       Token::Character.new(buffer_to_s)
     end
 
-    # TODO: rename as #consume_character_reference
-    # TODO: consume directly into @buffer
-    protected def consume_entity(io, attr = false)
+    protected def consume_character_reference(attr = false)
       consume_char
 
       case current_char?
       when nil
-        io << '&'
+        @buffer << '&'
       when '#'
         consume_char
-        consume_numeric_character_reference(io)
+        consume_numeric_character_reference
       when 'a'..'z', 'A'..'Z', '0'..'9'
-        consume_named_character_reference(io, attr)
+        consume_named_character_reference(attr)
       else
-        io << '&'
+        @buffer << '&'
       end
     end
 
-    protected def consume_numeric_character_reference(io)
+    protected def consume_numeric_character_reference
       value =
         if current_char? == 'x' || current_char? == 'X'
-          consume_hexadecimal_character_reference(io)
+          consume_hexadecimal_character_reference
         else
-          consume_decimal_character_reference(io)
+          consume_decimal_character_reference
         end
       return unless value
 
@@ -556,10 +810,10 @@ module HTML
       end
 
       char = CHARACTER_REFERENCE_REPLACEMENTS[value]? || value.unsafe_chr
-      io << char
+      @buffer << char
     end
 
-    protected def consume_hexadecimal_character_reference(io)
+    protected def consume_hexadecimal_character_reference
       x = consume_char
       value = 0
       digits = false
@@ -589,15 +843,15 @@ module HTML
 
       unless digits
         error "absence-of-digits-in-numeric-character-reference"
-        io << "&#" << x
-        io << ';' if semicolon
+        @buffer << "&#" << x
+        @buffer << ';' if semicolon
         return
       end
 
       value
     end
 
-    private def consume_decimal_character_reference(io)
+    private def consume_decimal_character_reference
       value = 0
       digits = false
       semicolon = false
@@ -620,8 +874,8 @@ module HTML
 
       unless digits
         error "absence-of-digits-in-numeric-character-reference"
-        io << "&#"
-        io << ';' if semicolon
+        @buffer << "&#"
+        @buffer << ';' if semicolon
         return
       end
 
@@ -637,8 +891,9 @@ module HTML
       overflowed ? Int32::MAX : value
     end
 
-    protected def consume_named_character_reference(io, attr = false)
+    protected def consume_named_character_reference(attr = false)
       semicolon = false
+      equals = false
 
       name = String.build do |str|
         while char = current_char?
@@ -649,6 +904,10 @@ module HTML
             semicolon = true
             str << consume_char
             break
+          when '='
+            equals = true
+            str << consume_char
+            break
           else
             error "missing-semicolon-after-character-reference"
             break
@@ -656,12 +915,17 @@ module HTML
         end
       end
 
-      if value = ENTITIES[name]?
-        io << value
+      if equals
+        @buffer << '&' << name
         return
       end
 
-      unless semicolon || attr
+      if value = ENTITIES[name]?
+        @buffer << value
+        return
+      end
+
+      unless attr
         n = name
         i = -1
 
@@ -671,8 +935,8 @@ module HTML
 
           if value = ENTITIES[n]?
             error "missing-semicolon-after-character-reference" unless attr
-            io << value
-            io << name[i..]
+            @buffer << value
+            @buffer << name[i..]
             return
           end
 
@@ -684,8 +948,8 @@ module HTML
         error "unknown-named-character-reference"
       end
 
-      io << '&'
-      io << name
+      @buffer << '&'
+      @buffer << name
     end
 
     protected def current_char?
@@ -753,46 +1017,26 @@ module HTML
       char
     end
 
-    # TODO: follow the HTML5 living standard rules
-    # OPTIMIZE: use StringPool
-    # OPTIMIZE: use @buffer
-    protected def consume_name(downcase = true, valid = true)
-      if valid
-        case current_char?
-        when nil
-          return
-        when 'a'..'z', 'A'..'Z'
-          # continue
-        else
-          return
-        end
-      end
+    protected def create_savepoint
+      {@io.tell, @current_char, @peek_char, @line, @column}
+    end
 
-      String.build do |str|
-        while char = current_char?
-          case char
-          when '>', ' ', '=', '/', ';'
-            break
-          when 'A'..'Z'
-            str << (downcase ? char.downcase : char)
-          else
-            str << char
-          end
-          consume_char
-        end
-      end
+    protected def restore_savepoint(pos, current_char, peek_char, line, column) : Nil
+      @io.seek(pos, IO::Seek::Set)
+      @current_char, @peek_char, @line, @column = current_char, peek_char, line, column
+
+      # p [:restore_savepoint, pos, current_char, peek_char, line, column]
     end
 
     # OPTIMIZE: use a local buffer to peek N chars at once
     protected def consume?(str : String, case_insensitive = false)
-      pos, curr, peek, line, column = @io.tell, @current_char, @peek_char, @line, @column
+      savepoint = create_savepoint
 
       str.each_char do |char|
-        if current_char? == char || (case_insensitive && current_char? == char.downcase)
+        if case_insensitive_compare(char, current_char?, case_insensitive)
           consume_char
         else
-          @io.seek(pos, IO::Seek::Set)
-          @current_char, @peek_char, @line, @column = curr, peek, line, column
+          restore_savepoint(*savepoint)
           return false
         end
       end
@@ -801,23 +1045,35 @@ module HTML
     end
 
     # OPTIMIZE: use a local buffer to peek N chars at once
-    protected def match?(str : String, case_insensitive = false)
-      pos, curr, peek, line, column = @io.tell, @current_char, @peek_char, @line, @column
+    protected def match?(str : String, case_insensitive = false, &)
+      savepoint = create_savepoint
       matched = true
-
       str.each_char do |char|
-        if current_char? == char || (case_insensitive && current_char? == char.downcase)
+        if case_insensitive_compare(char, current_char?, case_insensitive)
           consume_char
         else
           matched = false
           break
         end
       end
-
-      @io.seek(pos, IO::Seek::Set)
-      @current_char, @peek_char, @line, @column = curr, peek, line, column
-
+      yield current_char? if matched
+      restore_savepoint(*savepoint)
       matched
+    end
+
+    protected def case_insensitive_compare(expected, actual, case_insensitive)
+      return true if actual == expected
+
+      if case_insensitive && !actual.nil?
+        case expected
+        when 'a'..'z'
+          return actual == expected.upcase
+        when 'A'..'Z'
+          return actual == expected.downcase
+        end
+      end
+
+      false
     end
 
     protected def consume_until(&)
