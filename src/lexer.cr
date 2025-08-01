@@ -6,6 +6,39 @@ lib LibIntrinsics
   fun llvm_smul_with_overflow_i32 = "llvm.smul.with.overflow.i32"(Int32, Int32) : {Int32, Bool}
 end
 
+# :nodoc:
+class IO
+  def unsafe_read_char : Char?
+    peek = self.peek unless decoder
+
+    return unless first = peek_or_read_utf8(peek, 0)
+    first = first.to_u32
+
+    if first < 0x80
+      return first.unsafe_chr
+    end
+
+    second = peek_or_read_utf8_masked(peek, 1)
+
+    if first < 0xe0
+      return ((first << 6) &+ (second &- 0x3080)).unsafe_chr
+    end
+
+    third = peek_or_read_utf8_masked(peek, 2)
+
+    if first < 0xf0
+      return ((first << 12) &+ (second << 6) &+ (third &- 0xE2080)).unsafe_chr
+    end
+
+    if first < 0xf5
+      fourth = peek_or_read_utf8_masked(peek, 3)
+      return ((first << 18) &+ (second << 12) &+ (third << 6) &+ (fourth &- 0x3C82080)).unsafe_chr
+    end
+
+    raise InvalidByteSequenceError.new("Unexpected byte 0x#{first.to_s(16)} in UTF-8 byte sequence")
+  end
+end
+
 module HTML
   class Lexer
     # :nodoc:
@@ -111,15 +144,17 @@ module HTML
       RAWTEXT
       PLAINTEXT
       SCRIPT_DATA
+      CDATA_SECTION
     end
 
     def next(tag_name = "") : Token
       case @state
-      in State::DATA        then next_data
-      in State::RCDATA      then next_rcdata(tag_name)
-      in State::RAWTEXT     then next_rawtext(tag_name)
-      in State::PLAINTEXT   then next_plaintext
-      in State::SCRIPT_DATA then next_script_data(tag_name)
+      in State::DATA          then next_data
+      in State::RCDATA        then next_rcdata(tag_name)
+      in State::RAWTEXT       then next_rawtext(tag_name)
+      in State::PLAINTEXT     then next_plaintext
+      in State::SCRIPT_DATA   then next_script_data(tag_name)
+      in State::CDATA_SECTION then lex_cdata_section
       end
     end
 
@@ -712,6 +747,11 @@ module HTML
               next
             end
           end
+        when '\u0000'
+          error "unexpected-null-character"
+          consume_char
+          @buffer << '\uFFFD'
+          next
         end
         @buffer << consume_char
       end
@@ -726,6 +766,7 @@ module HTML
           consume_char
           break
         when '\u0000'
+          error "unexpected-null-character"
           consume_char
           @buffer << '\uFFFD'
         else
@@ -739,6 +780,7 @@ module HTML
       loop do
         if !current_char?
           error "eof-in-cdata"
+          return Token::EOF.new if @buffer.bytesize == 0
           break
         elsif consume?("]]>")
           break
@@ -746,6 +788,7 @@ module HTML
           @buffer << consume_char
         end
       end
+      @state = State::DATA
       Token::Character.new(buffer_to_s)
     end
 
@@ -792,23 +835,18 @@ module HTML
         end
       return unless value
 
-      case value
-      when 0x00
+      if value == 0x00
         error "null-character-reference"
         value = 0xFFFD
-      when 0x110000..
+      elsif value > 0x10FFFF
         error "character-reference-outside-unicode-range"
         value = 0xFFFD
-      when 0xD800..0xDFFF
+      elsif surrogate?(value)
         error "surrogate-character-reference"
         value = 0xFFFD
-      when 0xFDD0..0xFDEF, 0xFFFE, 0xFFFF, 0x1FFFE, 0x1FFFF, 0x2FFFE, 0x2FFFF,
-           0x3FFFE, 0x3FFFF, 0x4FFFE, 0x4FFFF, 0x5FFFE, 0x5FFFF, 0x6FFFE,
-           0x6FFFF, 0x7FFFE, 0x7FFFF, 0x8FFFE, 0x8FFFF, 0x9FFFE, 0x9FFFF,
-           0xAFFFE, 0xAFFFF, 0xBFFFE, 0xBFFFF, 0xCFFFE, 0xCFFFF, 0xDFFFE,
-           0xDFFFF, 0xEFFFE, 0xEFFFF, 0xFFFFE, 0xFFFFF, 0x10FFFE, 0x10FFFF
+      elsif non_character?(value)
         error "noncharacter-reference-reference"
-      when 0x01..0x08, 0x0B, 0x0D, 0x0E..0x1F, 0x007F..0x009F
+      elsif control?(value)
         error "control-character-reference"
       end
 
@@ -965,7 +1003,7 @@ module HTML
           @peek_char = nil
           @current_char = normalize(char)
         else
-          @current_char = normalize(@io.read_char)
+          @current_char = normalize(@io.unsafe_read_char)
         end
 
       if normalized_char == '\n'
@@ -980,13 +1018,48 @@ module HTML
       normalized_char
     end
 
-    # Normalizes CRLF and lone CR to a single LF character.
     protected def normalize(char)
+      return unless char
+
       if char == '\r'
+        # CRLF and lone CR to a single LF character
         @peek_char = nil if peek_char? == '\n'
         '\n'
       else
+        if surrogate?(char.ord)
+          error "surrogate-in-input-stream"
+        elsif non_character?(char.ord)
+          error "noncharacter-in-input-stream"
+        elsif control?(char.ord)
+          error "control-character-in-input-stream"
+        end
         char
+      end
+    end
+
+    private def surrogate?(code)
+      (0xD800..0xDFFF).includes?(code)
+    end
+
+    private def non_character?(code)
+      case code
+      when 0xFDD0..0xFDEF, 0xFFFE, 0xFFFF, 0x1FFFE, 0x1FFFF, 0x2FFFE, 0x2FFFF,
+           0x3FFFE, 0x3FFFF, 0x4FFFE, 0x4FFFF, 0x5FFFE, 0x5FFFF, 0x6FFFE,
+           0x6FFFF, 0x7FFFE, 0x7FFFF, 0x8FFFE, 0x8FFFF, 0x9FFFE, 0x9FFFF,
+           0xAFFFE, 0xAFFFF, 0xBFFFE, 0xBFFFF, 0xCFFFE, 0xCFFFF, 0xDFFFE,
+           0xDFFFF, 0xEFFFE, 0xEFFFF, 0xFFFFE, 0xFFFFF, 0x10FFFE, 0x10FFFF
+        true
+      else
+        false
+      end
+    end
+
+    private def control?(code)
+      case code
+      when 0x01..0x08, 0x0B, 0x0D, 0x0E..0x1F, 0x007F..0x009F
+        true
+      else
+        false
       end
     end
 
@@ -995,7 +1068,7 @@ module HTML
       if char = @peek_char
         char
       else
-        char = @io.read_char
+        char = @io.unsafe_read_char
         # p [:___peek_char, char, @column + 1]
         @peek_char = char
       end

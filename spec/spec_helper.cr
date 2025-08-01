@@ -4,14 +4,7 @@ require "json"
 require "../src/lexer"
 
 class Minitest::Test
-  def assert_lexes(input, output, state = HTML::Lexer::State::DATA, tag_name = "__invalid", file = __FILE__, line = __LINE__)
-    # puts
-    # puts state
-    # puts tag_name
-    # p input
-    # puts output
-    # puts
-
+  def assert_lexes(input, output, state = HTML::Lexer::State::DATA, tag_name = "__invalid", unescape = false, file = __FILE__, line = __LINE__)
     tokens = [] of HTML::Lexer::Token
 
     lexer = HTML::Lexer.new(input)
@@ -32,22 +25,20 @@ class Minitest::Test
     end
 
     JSON.parse(output).as_a.each do |expected|
-      # p expected
       token = tokens.shift? || lexer.next(tag_name)
-      # p token
 
       case token
       in HTML::Lexer::Token::Doctype
         assert_equal expected[0], "DOCTYPE", nil, file, line
-        assert_equal expected[1], token.name, nil, file, line
-        assert_equal expected[2], token.public_id?, nil, file, line
-        assert_equal expected[3], token.system_id?, nil, file, line
+        assert_equal unescape ? self.unescape(expected[1]) : expected[1], token.name, nil, file, line
+        assert_equal unescape ? self.unescape(expected[2]) : expected[2], token.public_id?, nil, file, line
+        assert_equal unescape ? self.unescape(expected[3]) : expected[3], token.system_id?, nil, file, line
         refute_equal expected[4], token.quirks_mode?, -> {
           expected[4] ? "Expected quirks mode flag to not be set" : "Expected quirks mode flag to be set"
         }, file, line
       in HTML::Lexer::Token::StartTag
         assert_equal expected[0], "StartTag", nil, file, line
-        assert_equal expected[1], token.name, nil, file, line
+        assert_equal unescape ? self.unescape(expected[1]) : expected[1], token.name, nil, file, line
 
         attrs = expected[2]?
         attrs = nil if attrs.try(&.as_h?.try(&.empty?))
@@ -58,13 +49,13 @@ class Minitest::Test
         end
       in HTML::Lexer::Token::EndTag
         assert_equal expected[0], "EndTag", nil, file, line
-        assert_equal expected[1], token.name, nil, file, line
+        assert_equal unescape ? self.unescape(expected[1]) : expected[1], token.name, nil, file, line
       in HTML::Lexer::Token::Comment
         assert_equal expected[0], "Comment", nil, file, line
-        assert_equal expected[1], token.data, nil, file, line
+        assert_equal unescape ? self.unescape(expected[1]) : expected[1], token.data, nil, file, line
       in HTML::Lexer::Token::Character
         assert_equal expected[0], "Character", nil, file, line
-        assert_equal expected[1], token.data, nil, file, line
+        assert_equal unescape ? self.unescape(expected[1]) : expected[1], token.data, nil, file, line
       in HTML::Lexer::Token::EOF
         assert_equal expected[0], "EOF", nil, file, line
       in HTML::Lexer::Token
@@ -74,5 +65,21 @@ class Minitest::Test
 
     # must have consumed everything
     assert_instance_of HTML::Lexer::Token::EOF, tokens.shift?, nil, file, line
+  end
+
+  def unescape(value : JSON::Any)
+    if str = value.as_s?
+      unescape(str)
+    else
+      value.raw
+    end
+  end
+
+  def unescape(value : String) : String
+    value.gsub(/\\u([A-F0-9]+)/) { |_, m| m[1].to_i(16).unsafe_chr }
+  end
+
+  def unescape(value : Nil) : Nil
+    value
   end
 end

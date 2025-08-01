@@ -11,34 +11,41 @@ Dir["html5lib-tests/tokenizer/*.test"].sort.each do |path|
   puts %(describe #{path.inspect} do)
   tests["tests"].as_a.each do |test|
     name = "#{suite}:#{test["description"]}"
-    input = test["input"].inspect
-    output = test["output"].to_json.inspect
     tag_name = (test["lastStartTag"]? || "__invalid__").inspect
+    unescape = !!test["doubleEscaped"]?
 
     puts %(  it #{name.inspect} do)
+    puts %(    output = #{test["output"].to_json.inspect})
 
-    if test["doubleEscaped"]?
-      puts %(    skip)
-    elsif (any = test["initialStates"]?) && (states = any.as_a?)
+    if unescape
+      puts %(    input = unescape(#{test["input"].inspect}))
+    else
+      puts %(    input = #{test["input"].inspect})
+    end
+
+    if (any = test["initialStates"]?) && (states = any.as_a?)
       states.each do |state|
         case state.as_s
         when "Data state"
-          puts %(    assert_lexes #{input}, #{output})
+          puts %(    assert_lexes input, output, HTML::Lexer::State::DATA, "", #{unescape})
         when "RCDATA state"
-          puts %(    assert_lexes #{input}, #{output}, HTML::Lexer::State::RCDATA, #{tag_name})
+          puts %(    assert_lexes input, output, HTML::Lexer::State::RCDATA, #{tag_name}, #{unescape})
         when "RAWTEXT state"
-          puts %(    assert_lexes #{input}, #{output}, HTML::Lexer::State::RAWTEXT, #{tag_name})
+          puts %(    assert_lexes input, output, HTML::Lexer::State::RAWTEXT, #{tag_name}, #{unescape})
         when "PLAINTEXT state"
-          puts %(    assert_lexes #{input}, #{output}, HTML::Lexer::State::PLAINTEXT, #{tag_name})
+          puts %(    assert_lexes input, output, HTML::Lexer::State::PLAINTEXT, "", #{unescape})
         when "Script data state"
-          puts %(    assert_lexes #{input}, #{output}, HTML::Lexer::State::SCRIPT_DATA, #{tag_name})
+          puts %(    assert_lexes input, output, HTML::Lexer::State::SCRIPT_DATA, #{tag_name}, #{unescape})
+        when "CDATA section state"
+          puts %(    assert_lexes input, output, HTML::Lexer::State::CDATA_SECTION, #{tag_name}, #{unescape})
         else
-          puts %(    skip # #{states.inspect})
+          puts %(    skip "Unsupported states: #{states.join(", ")}")
         end
       end
     else
-      puts %(    assert_lexes #{input}, #{output})
+      puts %(    assert_lexes input, output, HTML::Lexer::State::DATA, "", #{unescape})
     end
+
     puts %(  end)
   end
   puts %(end)
