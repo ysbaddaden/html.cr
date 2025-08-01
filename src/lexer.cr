@@ -695,19 +695,22 @@ module HTML
             break
           end
         when '<'
+          eof = false
           if consume?("<!-->")
             @buffer << "<!"
             break
-          elsif match?("<!--") { }
+          elsif match?("<!--") { |char| eof = char.nil? }
             error "nested-comment"
             @buffer << consume_char
             @buffer << consume_char
-            #if peek?(2)
+            if eof
+              consume_char
+              consume_char
+              error "eof-in-comment"
+              break
+            else
               next
-            #else
-            #  error "eof-in-comment"
-            #  break
-            #end
+            end
           end
         end
         @buffer << consume_char
