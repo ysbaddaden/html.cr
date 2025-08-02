@@ -124,7 +124,7 @@ module HTML
     end
 
     getter line = 1
-    getter column = 0
+    getter column = 1
 
     property state : State
 
@@ -194,6 +194,7 @@ module HTML
         when '&'
           consume_character_reference
         when '\u0000'
+          error "unexpected-null-character"
           consume_char
           @buffer << '\uFFFD'
         else
@@ -225,6 +226,7 @@ module HTML
             @buffer << '<'
           end
         when '\u0000'
+          error "unexpected-null-character"
           consume_char
           @buffer << '\uFFFD'
         else
@@ -283,6 +285,7 @@ module HTML
             escaped = 0
           end
         when '\u0000'
+          error "unexpected-null-character"
           consume_char
           @buffer << '\uFFFD'
         else
@@ -299,6 +302,7 @@ module HTML
           return Token::EOF.new if @buffer.bytesize == 0
           break
         when '\u0000'
+          error "unexpected-null-character"
           consume_char
           @buffer << '\uFFFD'
         else
@@ -375,10 +379,10 @@ module HTML
         if consume?("PUBLIC", case_insensitive: true)
           public_id = consume_doctype_public_id
           system_id = consume_doctype_system_id if public_id
-          consume_after_system_identifier
+          consume_after_system_identifier unless @bogus_doctype
         elsif consume?("SYSTEM", case_insensitive: true)
           system_id = consume_doctype_system_id
-          consume_after_system_identifier
+          consume_after_system_identifier unless @bogus_doctype
         else
           error "invalid-character-sequence-after-doctype-name"
           skip_bogus_doctype
@@ -407,8 +411,6 @@ module HTML
       loop do
         case char = current_char?
         when nil
-          error "eof-in-doctype"
-          @quirks_mode = true
           break
         when 'A'..'Z'
           consume_char
@@ -416,8 +418,8 @@ module HTML
         when ' ', '\t', '\n', '\f', '>'
           break
         when '\u0000'
-          consume_char
           error "unexpected-null-character"
+          consume_char
           @buffer << '\uFFFD'
         else
           @buffer << consume_char
@@ -437,8 +439,7 @@ module HTML
 
         case current_char?
         when nil
-          error "eof-in-doctype"
-          @quirks_mode = true
+          # skip
         when '"', '\''
           error "missing-whitespace-after-doctype-{{kind.id}}-keyword" if ws == 0
           quote = consume_char
@@ -446,12 +447,10 @@ module HTML
           loop do
             case current_char?
             when nil
-              error "eof-in-doctype"
-              @quirks_mode = true
               break
             when '\u0000'
-              consume_char
               error "unexpected-null-character"
+              consume_char
               @buffer << '\uFFFD'
             when quote
               consume_char
@@ -485,13 +484,17 @@ module HTML
     {% end %}
 
     protected def skip_bogus_doctype
-      while current_char?
-        case consume_char
+      @bogus_doctype = true
+
+      while char = current_char?
+        case char
         when '>'
+          consume_char
           break
         when '\u0000'
           error "unexpected-null-character"
         end
+        consume_char
       end
     end
 
@@ -515,8 +518,8 @@ module HTML
           Token::EOF.new
         end
       when '>'
-        consume_char
         error "missing-end-tag-name"
+        consume_char
         return self.next
       else
         error "invalid-first-character-of-tag-name"
@@ -548,8 +551,8 @@ module HTML
           empty, attr = consume_self_closing_start_tag
           break
         when '\u0000'
-          consume_char
           error "unexpected-null-character"
+          consume_char
           @buffer << '\uFFFD'
         else
           @buffer << consume_char
@@ -565,7 +568,7 @@ module HTML
           attr_name = nil
           attr_value = ""
 
-          skip_s
+          ws = skip_s
           case current_char?
           when nil
             error "eof-in-tag"
@@ -582,6 +585,7 @@ module HTML
             attr_name = consume_attribute_name
             skip_s
           else
+            error "missing-whitespace-between-attributes" if ws == 0 && !@attributes.empty?
             attr_name = consume_attribute_name
             skip_s
           end
@@ -642,8 +646,8 @@ module HTML
           consume_char
           @buffer << char.downcase
         when '\u0000'
-          consume_char
           error "unexpected-null-character"
+          consume_char
           @buffer << '\uFFFD'
         when '"', '\'', '<'
           error "unexpected-character-in-attribute-name"
@@ -665,8 +669,8 @@ module HTML
           consume_char
           break
         when '\u0000'
-          consume_char
           error "unexpected-null-character"
+          consume_char
           @buffer << '\uFFFD'
         when '&'
           consume_character_reference(attr: true)
@@ -686,8 +690,8 @@ module HTML
         when ' ', '\t', '\n', '\f'
           break
         when '\u0000'
-          consume_char
           error "unexpected-null-character"
+          consume_char
           @buffer << '\uFFFD'
         when '>'
           break
@@ -705,15 +709,15 @@ module HTML
 
     protected def lex_comment
       if current_char? == '>'
-        consume_char
         error "abrupt-closing-of-empty-comment" # <!-->
+        consume_char
         return Token::Comment.new("")
       end
 
       if current_char? == '-' && peek_char? == '>'
         consume_char
-        consume_char
         error "abrupt-closing-of-empty-comment" # <!--->
+        consume_char
         return Token::Comment.new("")
       end
 
@@ -845,7 +849,7 @@ module HTML
         error "surrogate-character-reference"
         value = 0xFFFD
       elsif non_character?(value)
-        error "noncharacter-reference-reference"
+        error "noncharacter-character-reference"
       elsif control?(value)
         error "control-character-reference"
       end
@@ -876,7 +880,7 @@ module HTML
           semicolon = true
           break
         else
-          error "missing-semicolon-after-character-reference"
+          error "missing-semicolon-after-character-reference" if digits
           break
         end
         consume_char
@@ -908,7 +912,7 @@ module HTML
           consume_char
           break
         else
-          error "missing-semicolon-after-character-reference"
+          error "missing-semicolon-after-character-reference" if digits
           break
         end
       end
@@ -950,7 +954,6 @@ module HTML
             str << consume_char
             break
           else
-            error "missing-semicolon-after-character-reference"
             break
           end
         end
@@ -962,6 +965,7 @@ module HTML
       end
 
       if value = ENTITIES[name]?
+        error "missing-semicolon-after-character-reference" unless semicolon
         @buffer << value
         return
       end
@@ -1006,13 +1010,6 @@ module HTML
           @current_char = normalize(@io.unsafe_read_char)
         end
 
-      if normalized_char == '\n'
-        @line += 1
-        @column = 1
-      else
-        @column += 1
-      end
-
       # p [:current_char, normalized_char, @line, @column]
 
       normalized_char
@@ -1033,6 +1030,7 @@ module HTML
         elsif control?(char.ord)
           error "control-character-in-input-stream"
         end
+
         char
       end
     end
@@ -1090,6 +1088,14 @@ module HTML
       char = current_char?
       @current_char = nil
       current_char? if @peek_char
+
+      if char == '\n'
+        @line += 1
+        @column = 1
+      elsif char
+        @column += 1
+      end
+
       char
     end
 

@@ -1,52 +1,64 @@
+#! /usr/bin/env -S crystal i
+# Copyright 2025 Julien PORTALIER
+# Distributed under the Apache-2.0 LICENSE
+
 require "json"
 
-puts %(require "./spec_helper")
+Dir.mkdir "spec" unless Dir.exists?("spec")
+Dir.mkdir "spec/tokenizer" unless Dir.exists?("spec/tokenizer")
 
 Dir["html5lib-tests/tokenizer/*.test"].sort.each do |path|
   suite = File.basename(path, ".test")
   next if suite == "xmlViolation"
 
-  tests = File.open(path, "r") { |file| JSON.parse(file) }
+  puts "Writing spec/tokenizer/#{suite}_spec.cr"
 
-  puts %(describe #{path.inspect} do)
-  tests["tests"].as_a.each do |test|
-    name = "#{suite}:#{test["description"]}"
-    tag_name = (test["lastStartTag"]? || "__invalid__").inspect
-    unescape = !!test["doubleEscaped"]?
+  File.open("spec/tokenizer/#{suite}_spec.cr", "w") do |io|
+    cases = File.open(path, "r") { |file| JSON.parse(file) }
 
-    puts %(  it #{name.inspect} do)
-    puts %(    output = #{test["output"].to_json.inspect})
+    io.puts %(require "../spec_helper")
+    io.puts %(describe "tokenizer/#{suite}" do)
 
-    if unescape
-      puts %(    input = unescape(#{test["input"].inspect}))
-    else
-      puts %(    input = #{test["input"].inspect})
-    end
+    cases["tests"].as_a.each do |test|
+      name = "#{test["description"]}"
+      tag_name = (test["lastStartTag"]? || "__invalid__").inspect
+      unescape = !!test["doubleEscaped"]?
+      errors = test["errors"]?.inspect
 
-    if (any = test["initialStates"]?) && (states = any.as_a?)
-      states.each do |state|
-        case state.as_s
-        when "Data state"
-          puts %(    assert_lexes input, output, HTML::Lexer::State::DATA, "", #{unescape})
-        when "RCDATA state"
-          puts %(    assert_lexes input, output, HTML::Lexer::State::RCDATA, #{tag_name}, #{unescape})
-        when "RAWTEXT state"
-          puts %(    assert_lexes input, output, HTML::Lexer::State::RAWTEXT, #{tag_name}, #{unescape})
-        when "PLAINTEXT state"
-          puts %(    assert_lexes input, output, HTML::Lexer::State::PLAINTEXT, "", #{unescape})
-        when "Script data state"
-          puts %(    assert_lexes input, output, HTML::Lexer::State::SCRIPT_DATA, #{tag_name}, #{unescape})
-        when "CDATA section state"
-          puts %(    assert_lexes input, output, HTML::Lexer::State::CDATA_SECTION, #{tag_name}, #{unescape})
-        else
-          puts %(    skip "Unsupported states: #{states.join(", ")}")
-        end
+      io.puts %(  it #{name.inspect} do)
+      io.puts %(    output = #{test["output"].to_json.inspect})
+
+      if unescape
+        io.puts %(    input = unescape(#{test["input"].inspect}))
+      else
+        io.puts %(    input = #{test["input"].inspect})
       end
-    else
-      puts %(    assert_lexes input, output, HTML::Lexer::State::DATA, "", #{unescape})
-    end
 
-    puts %(  end)
+      if (any = test["initialStates"]?) && (states = any.as_a?)
+        states.each do |state|
+          case state.as_s
+          when "Data state"
+            io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::DATA, "", #{unescape})
+          when "RCDATA state"
+            io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::RCDATA, #{tag_name}, #{unescape})
+          when "RAWTEXT state"
+            io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::RAWTEXT, #{tag_name}, #{unescape})
+          when "PLAINTEXT state"
+            io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::PLAINTEXT, "", #{unescape})
+          when "Script data state"
+            io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::SCRIPT_DATA, #{tag_name}, #{unescape})
+          when "CDATA section state"
+            io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::CDATA_SECTION, #{tag_name}, #{unescape})
+          else
+            io.puts %(    skip "Unsupported states: #{states.join(", ")}")
+          end
+        end
+      else
+        io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::DATA, "", #{unescape})
+      end
+
+      io.puts %(  end)
+    end
+    io.puts %(end)
   end
-  puts %(end)
 end

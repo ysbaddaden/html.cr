@@ -3,8 +3,16 @@ require "minitest/spec"
 require "json"
 require "../src/lexer"
 
+class HTML::Lexer
+  getter errors = [] of Hash(String, String | Int32)
+
+  def error(code : String)
+    @errors << {"code" => code, "line" => @line, "col" => @column}
+  end
+end
+
 class Minitest::Test
-  def assert_lexes(input, output, state = HTML::Lexer::State::DATA, tag_name = "__invalid", unescape = false, file = __FILE__, line = __LINE__)
+  def assert_lexes(input, output, errors, state = HTML::Lexer::State::DATA, tag_name = "__invalid", unescape = false, file = __FILE__, line = __LINE__)
     tokens = [] of HTML::Lexer::Token
 
     lexer = HTML::Lexer.new(input)
@@ -65,6 +73,18 @@ class Minitest::Test
 
     # must have consumed everything
     assert_instance_of HTML::Lexer::Token::EOF, tokens.shift?, nil, file, line
+
+    # if errors
+    #   # FIXME: we shouldn't have to cleanup errors (this is in part due to
+    #   # restoring the savepoints then re-parsing the same input)
+    #   errors_ = lexer.errors.uniq.sort do |a, b|
+    #     cmp = a["line"].as(Int32) <=> b["line"].as(Int32)
+    #     cmp == 0 ? a["col"].as(Int32) <=> b["col"].as(Int32) : cmp
+    #   end
+    #   assert_equal errors, errors_, nil, file, line
+    # else
+    #   assert_empty lexer.errors, "Expected no errors", file, line
+    # end
   end
 
   def unescape(value : JSON::Any)
