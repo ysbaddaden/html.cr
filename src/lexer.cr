@@ -915,7 +915,7 @@ module HTML
       name = String.build do |str|
         while char = current_char?
           case char
-          when'a'..'z', 'A'..'Z', '0'..'9'
+          when 'a'..'z', 'A'..'Z', '0'..'9'
             str << consume_char
           when ';'
             semicolon = true
@@ -1047,7 +1047,7 @@ module HTML
     protected def skip_s
       i = 0
       while {' ', '\t', '\n', '\f'}.includes?(current_char?)
-        i+= 1
+        i += 1
         consume_char
       end
       i
