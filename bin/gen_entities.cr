@@ -4,12 +4,12 @@ require "json"
 
 puts "module HTML"
 puts "  ENTITIES = {"
-JSON.parse(File.read("entities.json")).as_h.each do |name, h|
+JSON.parse(File.read("entities.json")).as_h.each do |name, hash|
   name = name[1..] # drop leading '&'
   print "    "
   print name.inspect
   print " => "
-  print h["characters"].inspect
+  print hash["characters"].inspect
   puts ","
 end
 puts "  }"

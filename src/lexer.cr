@@ -492,10 +492,10 @@ module HTML
       when '>'
         error "missing-end-tag-name"
         consume_char
-        return self.next
+        self.next
       else
         error "invalid-first-character-of-tag-name"
-        return lex_bogus_comment
+        lex_bogus_comment
       end
     end
 

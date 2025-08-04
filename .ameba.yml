@@ -1,0 +1,20 @@
+Excluded:
+  - spec/tokenizer/*_spec.cr
+
+Documentation/DocumentationAdmonition:
+  Enabled: false
+
+Lint/Typos:
+  Excluded:
+  - src/entities.cr
+  - spec/tokenizer/*_spec.cr
+
+Metrics/CyclomaticComplexity:
+  MaxComplexity: 20
+
+Naming/Filename:
+  Excluded:
+  - spec/tokenizer/*_spec.cr
+
+Naming/BlockParameterName:
+  Enabled: false
