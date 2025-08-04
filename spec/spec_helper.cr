@@ -98,8 +98,4 @@ class Minitest::Test
   def unescape(value : String) : String
     value.gsub(/\\u([A-F0-9]+)/) { |_, m| m[1].to_i(16).unsafe_chr }
   end
-
-  def unescape(value : Nil) : Nil
-    value
-  end
 end

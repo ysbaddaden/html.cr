@@ -1105,14 +1105,6 @@ module HTML
       false
     end
 
-    protected def consume_until(&)
-      String.build do |str|
-        while (char = current_char?) && !yield(char)
-          str << consume_char
-        end
-      end
-    end
-
     private def buffer_to_s
       buffer_to_s { "" }
     end
