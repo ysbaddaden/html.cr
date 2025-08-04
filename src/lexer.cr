@@ -127,10 +127,12 @@ module HTML
     getter column = 1
 
     property state : State
+    @current_char : Char?
 
     def initialize(@io : IO)
-      @attributes = Hash(String, String).new
+      @peek_chars = Deque(Char?).new(12)
       @buffer = IO::Memory.new
+      @attributes = Hash(String, String).new
       @quirks_mode = false
       @state = State::DATA
 
@@ -150,9 +152,9 @@ module HTML
     def next(tag_name = "") : Token
       case @state
       in State::DATA          then next_data
-      in State::RCDATA        then next_rcdata(tag_name)
-      in State::RAWTEXT       then next_rawtext(tag_name)
-      in State::PLAINTEXT     then next_plaintext
+      in State::RCDATA        then next_special_data(tag_name)
+      in State::RAWTEXT       then next_special_data(tag_name)
+      in State::PLAINTEXT     then next_special_data("")
       in State::SCRIPT_DATA   then next_script_data(tag_name)
       in State::CDATA_SECTION then lex_cdata_section
       end
@@ -171,67 +173,51 @@ module HTML
     end
 
     def next_rcdata(tag_name : String) : Token
-      loop do
-        case current_char?
-        when nil
-          return Token::EOF.new if @buffer.bytesize == 0
-          break
-        when '<'
-          if peek_char? == '/'
-            savepoint = create_savepoint
-            consume_char
-            consume_char
-            if appropriate_tag_token?(tag_name)
-              @state = State::DATA
-              return lex_end_tag if @buffer.bytesize == 0
-              restore_savepoint(*savepoint)
-              break
-            end
-            @buffer << "</"
-          else
-            @buffer << consume_char
-          end
-        when '&'
-          consume_character_reference
-        when '\u0000'
-          error "unexpected-null-character"
-          consume_char
-          @buffer << '\uFFFD'
-        else
-          @buffer << consume_char
-        end
-      end
-      Token::Character.new(buffer_to_s)
+      @state = State::RCDATA
+      next_special_data(tag_name)
     end
 
     def next_rawtext(tag_name : String) : Token
+      @state = State::RAWTEXT
+      next_special_data(tag_name)
+    end
+
+    def next_plaintext : Token
+      @state = State::RAWTEXT
+      next_special_data("")
+    end
+
+    protected def next_special_data(tag_name : String) : Token
       loop do
         case current_char?
         when nil
           return Token::EOF.new if @buffer.bytesize == 0
           break
         when '<'
-          savepoint = create_savepoint
-          consume_char
-          if current_char? == '/'
-            consume_char
-            if appropriate_tag_token?(tag_name)
+          if @state != State::PLAINTEXT && peek_char?(1) == '/'
+            if appropriate_tag_token?(tag_name, offset: 2)
               @state = State::DATA
-              return lex_end_tag if @buffer.bytesize == 0
-              restore_savepoint(*savepoint)
+              if @buffer.bytesize == 0
+                consume_char
+                consume_char
+                return lex_end_tag
+              end
               break
             end
-            @buffer << "</"
-          else
-            @buffer << '<'
+            @buffer << consume_char
+          end
+        when '&'
+          if @state == State::RCDATA
+            consume_character_reference
+            next
           end
         when '\u0000'
           error "unexpected-null-character"
           consume_char
           @buffer << '\uFFFD'
-        else
-          @buffer << consume_char
+          next
         end
+        @buffer << consume_char
       end
       Token::Character.new(buffer_to_s)
     end
@@ -245,24 +231,26 @@ module HTML
           return Token::EOF.new if @buffer.bytesize == 0
           break
         when '<'
-          savepoint = create_savepoint
-          consume_char
-
-          case current_char?
+          case peek_char?
           when '/'
-            consume_char
-            if escaped == 2 && appropriate_tag_token?("script", consume: true)
+            if escaped == 2 && appropriate_tag_token?("script", offset: 2)
+              8.times { consume_char }
               escaped = 1
               @buffer << "</script"
-            elsif appropriate_tag_token?(tag_name)
+            elsif appropriate_tag_token?(tag_name, offset: 2)
               @state = State::DATA
-              return lex_end_tag if @buffer.bytesize == 0
-              restore_savepoint(*savepoint)
+              if @buffer.bytesize == 0
+                consume_char
+                consume_char
+                return lex_end_tag
+              end
               break
             else
-              @buffer << "</"
+              @buffer << consume_char
+              @buffer << consume_char
             end
           when '!'
+            consume_char
             consume_char
             if escaped == 0 && consume?("--")
               escaped = 1
@@ -271,11 +259,12 @@ module HTML
               @buffer << "<!"
             end
           else
-            if escaped == 1 && appropriate_tag_token?("script", consume: true)
+            if escaped == 1 && appropriate_tag_token?("script", offset: 1)
+              7.times { consume_char }
               escaped = 2
               @buffer << "<script"
             else
-              @buffer << '<'
+              @buffer << consume_char
             end
           end
         when '-'
@@ -295,27 +284,10 @@ module HTML
       Token::Character.new(buffer_to_s)
     end
 
-    def next_plaintext : Token
-      loop do
-        case current_char?
-        when nil
-          return Token::EOF.new if @buffer.bytesize == 0
-          break
-        when '\u0000'
-          error "unexpected-null-character"
-          consume_char
-          @buffer << '\uFFFD'
-        else
-          @buffer << consume_char
-        end
-      end
-      Token::Character.new(buffer_to_s)
-    end
-
-    protected def appropriate_tag_token?(tag_name, consume = false)
+    protected def appropriate_tag_token?(tag_name, consume = false, offset = 0)
       valid = false
 
-      match?(tag_name, case_insensitive: true) do |next_char|
+      match?(tag_name, offset, case_insensitive: true) do |next_char|
         valid = next_char.in?({'>', '/', ' ', '\t', '\n', '\f'})
       end
 
@@ -1003,8 +975,7 @@ module HTML
       end
 
       normalized_char =
-        if char = @peek_char
-          @peek_char = nil
+        if char = @peek_chars.shift?
           @current_char = normalize(char)
         else
           @current_char = normalize(@io.unsafe_read_char)
@@ -1020,7 +991,7 @@ module HTML
 
       if char == '\r'
         # CRLF and lone CR to a single LF character
-        @peek_char = nil if peek_char? == '\n'
+        @peek_chars.shift? if peek_char? == '\n'
         '\n'
       else
         if surrogate?(char.ord)
@@ -1061,14 +1032,15 @@ module HTML
       end
     end
 
-    # OPTIMIZE: allow to peek up to N chars
-    protected def peek_char?
-      if char = @peek_char
-        char
+    protected def peek_char?(n = 1)
+      if n == 0
+        current_char?
+      elsif n <= @peek_chars.size
+        @peek_chars.unsafe_fetch(n - 1)
       else
-        char = @io.unsafe_read_char
-        # p [:___peek_char, char, @column + 1]
-        @peek_char = char
+        # TODO: should we always fill the buffer (?)
+        @peek_chars.size.upto(n) { @peek_chars << @io.unsafe_read_char }
+        @peek_chars[n - 1]?
       end
     end
 
@@ -1081,13 +1053,9 @@ module HTML
       i
     end
 
-    @current_char : Char?
-    @peek_char : Char?
-
     protected def consume_char
       char = current_char?
-      @current_char = nil
-      current_char? if @peek_char
+      @current_char = normalize(@peek_chars.shift?)
 
       if char == '\n'
         @line += 1
@@ -1099,48 +1067,27 @@ module HTML
       char
     end
 
-    protected def create_savepoint
-      {@io.tell, @current_char, @peek_char, @line, @column}
-    end
-
-    protected def restore_savepoint(pos, current_char, peek_char, line, column) : Nil
-      @io.seek(pos, IO::Seek::Set)
-      @current_char, @peek_char, @line, @column = current_char, peek_char, line, column
-
-      # p [:restore_savepoint, pos, current_char, peek_char, line, column]
-    end
-
-    # OPTIMIZE: use a local buffer to peek N chars at once
     protected def consume?(str : String, case_insensitive = false)
-      savepoint = create_savepoint
+      if match?(str, 0, case_insensitive) { }
+        str.size.times { consume_char }
+        true
+      else
+        false
+      end
+    end
 
-      str.each_char do |char|
-        if case_insensitive_compare(char, current_char?, case_insensitive)
-          consume_char
-        else
-          restore_savepoint(*savepoint)
+    protected def match?(str : String, offset = 0, case_insensitive = false, &)
+      i = offset
+
+      str.each_char do |expected|
+        unless case_insensitive_compare(expected, peek_char?(i), case_insensitive)
           return false
         end
+        i += 1
       end
 
+      yield peek_char?(offset + str.size)
       true
-    end
-
-    # OPTIMIZE: use a local buffer to peek N chars at once
-    protected def match?(str : String, case_insensitive = false, &)
-      savepoint = create_savepoint
-      matched = true
-      str.each_char do |char|
-        if case_insensitive_compare(char, current_char?, case_insensitive)
-          consume_char
-        else
-          matched = false
-          break
-        end
-      end
-      yield current_char? if matched
-      restore_savepoint(*savepoint)
-      matched
     end
 
     protected def case_insensitive_compare(expected, actual, case_insensitive)
