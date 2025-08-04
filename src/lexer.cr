@@ -1119,8 +1119,12 @@ module HTML
       end
     end
 
+    protected def error(code : String, line = nil, column = nil)
+      error code, line || @line, column || @column
+    end
+
     # Override to handle tokenization errors.
-    def error(code : String)
+    def error(code : String, line : Int32, column : Int32)
     end
   end
 end

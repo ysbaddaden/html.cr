@@ -4,11 +4,39 @@ require "json"
 require "../src/lexer"
 
 class HTML::Lexer
-  getter errors = [] of Hash(String, String | Int32)
+  # :nodoc:
+  struct Error
+    getter code : String
+    getter line : Int32
+    getter column : Int32
 
-  def error(code : String)
-    @errors << {"code" => code, "line" => @line, "col" => @column}
+    def self.wrap(errors)
+      errors.map do |hash|
+        code = hash["code"].as(String)
+        line = hash["line"].as(Int32)
+        column = hash["col"].as(Int32)
+        Error.new(code, line, column)
+      end
+    end
+
+    def initialize(@code, @line, @column)
+    end
+
+    def <=>(other : Error)
+      cmp = code <=> other.code
+      cmp = line <=> other.line if cmp == 0
+      cmp = column <=> other.column if cmp == 0
+      cmp
+    end
   end
+
+  # :nodoc:
+  getter errors = [] of Error
+
+  # :nodoc:
+  # def error(code : String, line : Int32, column : Int32)
+  #   @errors << Error.new(code, line, column)
+  # end
 end
 
 class Minitest::Test
@@ -75,13 +103,8 @@ class Minitest::Test
     assert_instance_of HTML::Lexer::Token::EOF, tokens.shift?, nil, file, line
 
     # if errors
-    #   # FIXME: we shouldn't have to cleanup errors (this is in part due to
-    #   # restoring the savepoints then re-parsing the same input)
-    #   errors_ = lexer.errors.uniq.sort do |a, b|
-    #     cmp = a["line"].as(Int32) <=> b["line"].as(Int32)
-    #     cmp == 0 ? a["col"].as(Int32) <=> b["col"].as(Int32) : cmp
-    #   end
-    #   assert_equal errors, errors_, nil, file, line
+    #   assert_equal HTML::Lexer::Error.wrap(errors).sort, lexer.errors.sort, nil, file, line
+    #   # assert_equal errors, lexer.errors, nil, file, line
     # else
     #   assert_empty lexer.errors, "Expected no errors", file, line
     # end
