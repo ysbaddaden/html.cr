@@ -23,10 +23,14 @@ class HTML::Lexer
     end
 
     def <=>(other : Error)
-      cmp = code <=> other.code
-      cmp = line <=> other.line if cmp == 0
+      cmp = line <=> other.line
       cmp = column <=> other.column if cmp == 0
+      cmp = code <=> other.code if cmp == 0
       cmp
+    end
+
+    def inspect(io : IO)
+      io << @code << " at " << @line << ':' << @column
     end
   end
 

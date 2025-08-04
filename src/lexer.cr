@@ -228,6 +228,10 @@ module HTML
       loop do
         case current_char?
         when nil
+          case escaped
+          when 1, 2
+             error "eof-in-script-html-comment-like-text"
+          end
           return Token::EOF.new if @buffer.bytesize == 0
           break
         when '<'
@@ -350,7 +354,7 @@ module HTML
       else
         if consume?("PUBLIC", case_insensitive: true)
           public_id = consume_doctype_public_id
-          system_id = consume_doctype_system_id if public_id
+          system_id = consume_doctype_system_id(between: true) if public_id
           consume_after_system_identifier unless @bogus_doctype
         elsif consume?("SYSTEM", case_insensitive: true)
           system_id = consume_doctype_system_id
@@ -375,6 +379,7 @@ module HTML
         error "eof-in-doctype"
         @quirks_mode = true
       else
+        error "unexpected-character-after-doctype-system-identifier"
         skip_bogus_doctype
       end
     end
@@ -383,6 +388,7 @@ module HTML
       loop do
         case char = current_char?
         when nil
+          return if @buffer.bytesize == 0
           break
         when 'A'..'Z'
           consume_char
@@ -406,14 +412,20 @@ module HTML
     end
 
     {% for kind in %w[public system] %}
-      protected def consume_doctype_{{kind.id}}_id
+      protected def consume_doctype_{{kind.id}}_id{% if kind == "system" %}(between = false){% end %}
         ws = skip_s
 
         case current_char?
         when nil
           # skip
         when '"', '\''
-          error "missing-whitespace-after-doctype-{{kind.id}}-keyword" if ws == 0
+          if ws == 0
+            if {% if kind == "system" %} between {% else %} false {% end %}
+              error "missing-whitespace-between-doctype-public-and-system-identifiers"
+            else
+              error "missing-whitespace-after-doctype-{{kind.id}}-keyword"
+            end
+          end
           quote = consume_char
 
           loop do
@@ -499,6 +511,9 @@ module HTML
       end
     end
 
+    # TODO: if end-tag: error "end-tag-with-attributes" if attributes*
+    # TODO: if end-tag: no error "missing-whitespace-between-attributes"
+    # TODO: if end-tag: error "end-tag-with-trailing-solidus" if />
     protected def consume_tag
       empty = false
       attr = false
@@ -537,6 +552,8 @@ module HTML
       # attributes*
       if attr
         loop do
+          column = -1
+
           attr_name = nil
           attr_value = ""
 
@@ -553,11 +570,13 @@ module HTML
             break
           when '='
             error "unexpected-equals-sign-before-attribute-name"
+            column = @column
             @buffer << consume_char
             attr_name = consume_attribute_name
             skip_s
           else
             error "missing-whitespace-between-attributes" if ws == 0 && !@attributes.empty?
+            column = @column
             attr_name = consume_attribute_name
             skip_s
           end
@@ -581,7 +600,8 @@ module HTML
           next unless attr_name
 
           if @attributes.has_key?(attr_name)
-            error "duplicate-attribute"
+            # +1 to point to the first char of the attr name
+            error "duplicate-attribute", column: column + 1
           else
             @attributes[attr_name] = attr_value
           end
@@ -835,6 +855,7 @@ module HTML
       value = 0
       digits = false
       semicolon = false
+      column = nil
 
       while char = current_char?
         case char
@@ -848,18 +869,20 @@ module HTML
           digits = true
           value = saturating_add(saturating_mul(value, 16), char.ord &- 0x57)
         when ';'
-          consume_char
+          column = @column
           semicolon = true
+          consume_char
           break
         else
-          error "missing-semicolon-after-character-reference" if digits
           break
         end
         consume_char
       end
 
-      unless digits
-        error "absence-of-digits-in-numeric-character-reference"
+      if digits
+        error "missing-semicolon-after-character-reference" unless semicolon
+      else
+        error "absence-of-digits-in-numeric-character-reference", column: column
         @buffer << "&#" << x
         @buffer << ';' if semicolon
         return
@@ -872,6 +895,7 @@ module HTML
       value = 0
       digits = false
       semicolon = false
+      column = nil
 
       while char = current_char?
         case char
@@ -880,17 +904,19 @@ module HTML
           value = saturating_add(saturating_mul(value, 10), char.ord &- 0x30)
           consume_char
         when ';'
+          column = @column
           semicolon = true
           consume_char
           break
         else
-          error "missing-semicolon-after-character-reference" if digits
           break
         end
       end
 
-      unless digits
-        error "absence-of-digits-in-numeric-character-reference"
+      if digits
+        error "missing-semicolon-after-character-reference"  unless semicolon
+      else
+        error "absence-of-digits-in-numeric-character-reference", column: column
         @buffer << "&#"
         @buffer << ';' if semicolon
         return
@@ -911,6 +937,7 @@ module HTML
     protected def consume_named_character_reference(attr = false)
       semicolon = false
       equals = false
+      column = nil
 
       name = String.build do |str|
         while char = current_char?
@@ -918,6 +945,7 @@ module HTML
           when 'a'..'z', 'A'..'Z', '0'..'9'
             str << consume_char
           when ';'
+            column = @column
             semicolon = true
             str << consume_char
             break
@@ -951,7 +979,7 @@ module HTML
           break if n.empty?
 
           if value = ENTITIES[n]?
-            error "missing-semicolon-after-character-reference" unless attr
+            error "missing-semicolon-after-character-reference", column: @column - i.abs unless attr
             @buffer << value
             @buffer << name[i..]
             return
@@ -962,7 +990,7 @@ module HTML
       end
 
       if semicolon
-        error "unknown-named-character-reference"
+        error "unknown-named-character-reference", column: column
       end
 
       @buffer << '&'
