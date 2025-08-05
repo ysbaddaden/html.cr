@@ -2,9 +2,10 @@
 .PHONY:
 
 CRYSTAL = crystal
+CRFLAGS =
 OPTS =
 
 -include local.mk
 
-test: .PHONY
-	$(CRYSTAL) run spec/tokenizer/*_spec.cr -- $(OPTS)
+spec: .PHONY
+	$(CRYSTAL) run $(CRFLAGS) spec/tokenizer/*_spec.cr -- $(OPTS)

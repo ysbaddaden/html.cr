@@ -230,7 +230,7 @@ module HTML
         when nil
           case escaped
           when 1, 2
-             error "eof-in-script-html-comment-like-text"
+            error "eof-in-script-html-comment-like-text"
           end
           return Token::EOF.new if @buffer.bytesize == 0
           break
@@ -511,8 +511,9 @@ module HTML
       end
     end
 
-    # TODO: if end-tag: error "end-tag-with-attributes" if attributes*
+    # FIXME: error "unexpected-solidus-in-tag"
     # TODO: if end-tag: no error "missing-whitespace-between-attributes"
+    # TODO: if end-tag: error "end-tag-with-attributes" if attributes*
     # TODO: if end-tag: error "end-tag-with-trailing-solidus" if />
     protected def consume_tag
       empty = false
@@ -914,7 +915,7 @@ module HTML
       end
 
       if digits
-        error "missing-semicolon-after-character-reference"  unless semicolon
+        error "missing-semicolon-after-character-reference" unless semicolon
       else
         error "absence-of-digits-in-numeric-character-reference", column: column
         @buffer << "&#"
