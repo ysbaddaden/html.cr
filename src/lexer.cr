@@ -14,28 +14,26 @@ class IO
     return unless first = peek_or_read_utf8(peek, 0)
     first = first.to_u32
 
-    if first < 0x80
-      return first.unsafe_chr
-    end
+    codepoint =
+      if (first & 0x80) == 0
+        first
+      elsif (first & 0xE0) == 0xC0
+        second = peek_or_read_utf8_masked(peek, 1)
+        ((first << 6) &+ (second &- 0x3080))
+      elsif (first & 0xF0) == 0xE0
+        second = peek_or_read_utf8_masked(peek, 1)
+        third = peek_or_read_utf8_masked(peek, 2)
+        ((first << 12) &+ (second << 6) &+ (third &- 0xE2080))
+      elsif (first & 0xF8) == 0xF0
+        second = peek_or_read_utf8_masked(peek, 1)
+        third = peek_or_read_utf8_masked(peek, 2)
+        fourth = peek_or_read_utf8_masked(peek, 3)
+        ((first << 18) &+ (second << 12) &+ (third << 6) &+ (fourth &- 0x3C82080))
+      else
+        raise InvalidByteSequenceError.new("Unexpected byte 0x#{first.to_s(16)} in UTF-8 byte sequence")
+      end
 
-    second = peek_or_read_utf8_masked(peek, 1)
-
-    if first < 0xe0
-      return ((first << 6) &+ (second &- 0x3080)).unsafe_chr
-    end
-
-    third = peek_or_read_utf8_masked(peek, 2)
-
-    if first < 0xf0
-      return ((first << 12) &+ (second << 6) &+ (third &- 0xE2080)).unsafe_chr
-    end
-
-    if first < 0xf5
-      fourth = peek_or_read_utf8_masked(peek, 3)
-      return ((first << 18) &+ (second << 12) &+ (third << 6) &+ (fourth &- 0x3C82080)).unsafe_chr
-    end
-
-    raise InvalidByteSequenceError.new("Unexpected byte 0x#{first.to_s(16)} in UTF-8 byte sequence")
+    codepoint.unsafe_chr
   end
 end
 
@@ -341,7 +339,6 @@ module HTML
     protected def lex_doctype
       @quirks_mode = false
 
-      error "missing-whitespace-before-doctype-name" if skip_s == 0
       name = consume_doctype_name
 
       skip_s
@@ -385,29 +382,40 @@ module HTML
     end
 
     protected def consume_doctype_name
-      loop do
-        case char = current_char?
-        when nil
-          return if @buffer.bytesize == 0
-          break
-        when 'A'..'Z'
-          consume_char
-          @buffer << char.downcase
-        when ' ', '\t', '\n', '\f', '>'
-          break
-        when '\u0000'
-          error "unexpected-null-character"
-          consume_char
-          @buffer << '\uFFFD'
-        else
-          @buffer << consume_char
-        end
-      end
-
-      buffer_to_s do
+      case current_char?
+      when nil
+        return
+      when '>'
         error "missing-doctype-name"
         @quirks_mode = true
-        nil
+        return
+      else
+        error "missing-whitespace-before-doctype-name" if skip_s == 0
+
+        loop do
+          case char = current_char?
+          when nil
+            return if @buffer.bytesize == 0
+            break
+          when 'A'..'Z'
+            consume_char
+            @buffer << char.downcase
+          when ' ', '\t', '\n', '\f', '>'
+            break
+          when '\u0000'
+            error "unexpected-null-character"
+            consume_char
+            @buffer << '\uFFFD'
+          else
+            @buffer << consume_char
+          end
+        end
+
+        buffer_to_s do
+          error "missing-doctype-name"
+          @quirks_mode = true
+          nil
+        end
       end
     end
 
@@ -483,9 +491,10 @@ module HTML
     end
 
     protected def lex_start_tag
-      if x = consume_tag
+      if x = consume_tag(end_tag: false)
         Token::StartTag.new(*x)
       else
+        error "eof-in-tag"
         Token::EOF.new
       end
     end
@@ -496,9 +505,10 @@ module HTML
         error "eof-before-tag-name"
         Token::Character.new("</")
       when 'a'..'z', 'A'..'Z'
-        if x = consume_tag
+        if x = consume_tag(end_tag: true)
           Token::EndTag.new(*x)
         else
+          error "eof-in-tag"
           Token::EOF.new
         end
       when '>'
@@ -512,10 +522,9 @@ module HTML
     end
 
     # FIXME: error "unexpected-solidus-in-tag"
-    # TODO: if end-tag: no error "missing-whitespace-between-attributes"
     # TODO: if end-tag: error "end-tag-with-attributes" if attributes*
     # TODO: if end-tag: error "end-tag-with-trailing-solidus" if />
-    protected def consume_tag
+    protected def consume_tag(end_tag)
       empty = false
       attr = false
 
@@ -523,7 +532,6 @@ module HTML
       loop do
         case char = current_char?
         when nil
-          error "eof-in-tag"
           return
         when 'A'..'Z'
           consume_char
@@ -536,7 +544,8 @@ module HTML
           consume_char
           break
         when '/'
-          empty, attr = consume_self_closing_start_tag
+          return unless res = consume_self_closing_tag(end_tag)
+          empty, attr = res
           break
         when '\u0000'
           error "unexpected-null-character"
@@ -552,21 +561,24 @@ module HTML
 
       # attributes*
       if attr
+        ws = 0
+
         loop do
           column = -1
 
           attr_name = nil
           attr_value = ""
 
-          ws = skip_s
+          ws += skip_s
           case current_char?
           when nil
-            error "eof-in-tag"
             return
           when '/'
-            empty, _ = consume_self_closing_start_tag
+            return unless res = consume_self_closing_tag(end_tag)
+            empty, _ = res
             empty ? break : next
           when '>'
+            error "end-tag-with-attributes" if end_tag && !@attributes.empty?
             consume_char
             break
           when '='
@@ -574,12 +586,14 @@ module HTML
             column = @column
             @buffer << consume_char
             attr_name = consume_attribute_name
-            skip_s
+            ws = skip_s
           else
-            error "missing-whitespace-between-attributes" if ws == 0 && !@attributes.empty?
+            if !end_tag && ws == 0 && !@attributes.empty?
+              error "missing-whitespace-between-attributes"
+            end
             column = @column
             attr_name = consume_attribute_name
-            skip_s
+            ws = skip_s
           end
 
           if current_char? == '='
@@ -617,10 +631,15 @@ module HTML
       {tag_name, attributes, empty}
     end
 
-    protected def consume_self_closing_start_tag
+    protected def consume_self_closing_tag(end_tag)
       consume_char
       empty = attr = false
-      if current_char? == '>'
+
+      case current_char?
+      when nil
+        return
+      when '>'
+        error "end-tag-with-trailing-solidus" if end_tag
         consume_char
         empty = true
       else
@@ -656,7 +675,6 @@ module HTML
       loop do
         case char = current_char?
         when nil
-          error "eof-in-tag"
           return
         when quote
           consume_char
@@ -666,7 +684,7 @@ module HTML
           consume_char
           @buffer << '\uFFFD'
         when '&'
-          consume_character_reference(attr: true)
+          consume_character_reference(attr: true, quoted: true)
         else
           @buffer << consume_char
         end
@@ -678,7 +696,6 @@ module HTML
       loop do
         case char = current_char?
         when nil
-          error "eof-in-tag"
           return
         when ' ', '\t', '\n', '\f'
           break
@@ -689,7 +706,7 @@ module HTML
         when '>'
           break
         when '&'
-          consume_character_reference(attr: true)
+          consume_character_reference(attr: true, quoted: false)
         when '"', '\'', '<', '=', '`'
           error "unexpected-character-in-unquoted-attribute-value"
           @buffer << consume_char
@@ -732,7 +749,6 @@ module HTML
             @buffer << "<!"
             break
           elsif match?("<!--") { |char| eof = char.nil? }
-            error "nested-comment"
             @buffer << consume_char
             @buffer << consume_char
             if eof
@@ -741,6 +757,7 @@ module HTML
               error "eof-in-comment"
               break
             else
+              error "nested-comment", column: @column + 2
               next
             end
           end
@@ -807,7 +824,7 @@ module HTML
       Token::Character.new(buffer_to_s)
     end
 
-    protected def consume_character_reference(attr = false)
+    protected def consume_character_reference(attr = false, quoted = true)
       consume_char
 
       case current_char?
@@ -817,7 +834,7 @@ module HTML
         consume_char
         consume_numeric_character_reference
       when 'a'..'z', 'A'..'Z', '0'..'9'
-        consume_named_character_reference(attr)
+        consume_named_character_reference(attr, quoted)
       else
         @buffer << '&'
       end
@@ -935,7 +952,7 @@ module HTML
       overflowed ? Int32::MAX : value
     end
 
-    protected def consume_named_character_reference(attr = false)
+    protected def consume_named_character_reference(attr = false, quoted = false)
       semicolon = false
       equals = false
       column = nil
@@ -951,6 +968,9 @@ module HTML
             str << consume_char
             break
           when '='
+            if attr && !quoted
+              error "unexpected-character-in-unquoted-attribute-value"
+            end
             equals = true
             str << consume_char
             break
@@ -988,10 +1008,10 @@ module HTML
 
           i -= 1
         end
-      end
 
-      if semicolon
-        error "unknown-named-character-reference", column: column
+        if semicolon
+          error "unknown-named-character-reference", column: column
+        end
       end
 
       @buffer << '&'

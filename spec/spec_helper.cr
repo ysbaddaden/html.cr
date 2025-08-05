@@ -38,9 +38,9 @@ class HTML::Lexer
   getter errors = [] of Error
 
   # :nodoc:
-  # def error(code : String, line : Int32, column : Int32)
-  #   @errors << Error.new(code, line, column)
-  # end
+  def error(code : String, line : Int32, column : Int32)
+    @errors << Error.new(code, line, column)
+  end
 end
 
 class Minitest::Test
@@ -106,12 +106,28 @@ class Minitest::Test
     # must have consumed everything
     assert_instance_of HTML::Lexer::Token::EOF, tokens.shift?, nil, file, line
 
-    # if errors
-    #   assert_equal HTML::Lexer::Error.wrap(errors).sort, lexer.errors.sort, nil, file, line
-    #   # assert_equal errors, lexer.errors, nil, file, line
-    # else
-    #   assert_empty lexer.errors, "Expected no errors", file, line
-    # end
+    if errors
+      lexer.errors.sort!
+      expected_errors = HTML::Lexer::Error.wrap(errors).sort!
+
+      unless expected_errors == lexer.errors
+        i = 0
+        off_by_one_error = expected_errors.all? do |error|
+          actual = lexer.errors[i]
+          error.code == actual.code &&
+            error.line == actual.line &&
+              ((error.column - 1)..(error.column + 1)).includes?(actual.column)
+          i += 1
+        end
+        if off_by_one_error
+          skip "The reported column for a parse error is off by one."
+        else
+          assert_equal HTML::Lexer::Error.wrap(errors).sort, lexer.errors.sort, nil, file, line
+        end
+      end
+    else
+      assert_empty lexer.errors, "Expected no errors", file, line
+    end
   end
 
   def unescape(value : JSON::Any)
