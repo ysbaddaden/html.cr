@@ -4,3 +4,7 @@ shards:
     git: https://github.com/ysbaddaden/minitest.cr.git
     version: 1.5.0
 
+  xml:
+    path: ../xml
+    version: 0.1.0
+

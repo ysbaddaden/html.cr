@@ -7,11 +7,12 @@ authors:
 description: |
   HTML library
 
-# dependencies:
-#   dom:
-#     github: ysbaddaden/dom.cr
-#   xml:
-#     github: ysbaddaden/xml.cr
+dependencies:
+  # dom:
+  #   github: ysbaddaden/dom.cr
+  xml:
+    # github: ysbaddaden/xml.cr
+    path: ../xml
 
 development_dependencies:
   minitest:

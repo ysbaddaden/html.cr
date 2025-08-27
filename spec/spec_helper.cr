@@ -5,6 +5,7 @@ require "minitest/autorun"
 require "minitest/spec"
 require "json"
 require "../src/lexer"
+require "../src/parser"
 
 class HTML::Lexer
   # :nodoc:
@@ -143,5 +144,48 @@ class Minitest::Test
 
   def unescape(value : String) : String
     value.gsub(/\\u([A-F0-9]+)/) { |_, m| m[1].to_i(16).unsafe_chr }
+  end
+
+  def assert_parses(input, output, message = nil, file = __FILE__, line = __LINE__)
+    document = HTML::Parser.parse(input)
+    assert_equal output.rstrip, serialize(document).rstrip, message, file, line
+  end
+
+  def serialize(document)
+    String.build do |str|
+      document.each_child do |node|
+        serialize(str, node, nested: 0)
+      end
+    end
+  end
+
+  def serialize(io, node, nested)
+    io << "| "
+    nested.times { io << "  " }
+    case node
+    when XML::DOM::Element
+      io << '<' << node.name << '>' << '\n'
+      node.attributes.each { |attr| serialize(io, attr, nested + 1) }
+    when XML::DOM::Attribute
+      io << node.name << '=' << '"' << node.value << "\"\n"
+    when XML::DOM::Comment
+      io << "<!-- " << node.data << " -->\n"
+    when XML::DOM::Text
+      io << '"' << node.data << "\"\n"
+    when XML::DOM::DocumentType
+      io << "<!DOCTYPE " << node.name
+      pubid = node.public_id
+      sysid = node.system_id
+      unless pubid.blank? && sysid.blank?
+        io << ' '
+        pubid.inspect(io)
+        io << ' '
+        sysid.inspect(io)
+      end
+      io << ">\n"
+    else
+      node.inspect(io)
+    end
+    node.each_child { |child| serialize(io, child, nested + 1) }
   end
 end

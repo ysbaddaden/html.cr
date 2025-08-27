@@ -6,6 +6,7 @@ require "json"
 
 Dir.mkdir "spec" unless Dir.exists?("spec")
 Dir.mkdir "spec/tokenizer" unless Dir.exists?("spec/tokenizer")
+Dir.mkdir "spec/tree-construction" unless Dir.exists?("spec/tree-construction")
 
 Dir["html5lib-tests/tokenizer/*.test"].sort.each do |path|
   suite = File.basename(path, ".test")
@@ -57,6 +58,53 @@ Dir["html5lib-tests/tokenizer/*.test"].sort.each do |path|
         io.puts %(    assert_lexes input, output, #{errors}, HTML::Lexer::State::DATA, "", #{unescape})
       end
 
+      io.puts %(  end)
+    end
+    io.puts %(end)
+  end
+end
+
+Dir["html5lib-tests/tree-construction/*.dat"].sort.each do |path|
+  suite = File.basename(path, ".dat")
+
+  puts "spec/tree-construction/#{suite}_spec.cr"
+
+  tests = [] of Hash(String, Array(String))
+  test = {} of String => Array(String)
+
+  name = ""
+  File.each_line(path, chomp: false) do |line|
+    if line.starts_with?('#')
+      if line == "#data\n"
+        tests << test.dup unless test.empty?
+        test.clear
+      end
+      name = line.chomp
+      test[name] = [] of String
+    else
+      test[name] << line
+    end
+  end
+  tests << test.dup unless test.empty?
+
+  File.open("spec/tree-construction/#{suite}_spec.cr", "w") do |io|
+    io.puts %(require "../spec_helper")
+    io.puts
+    io.puts %(describe #{suite.inspect} do)
+
+    n = tests.size.digits.size
+
+    tests.each_with_index do |test, i|
+      next if test.has_key?("#script-on") && !test.has_key?("#script-off")
+
+      io.puts %(  it "#{i.to_s.rjust(n, '0')}" do)
+      if test.has_key?("#document-fragment")
+        io.puts %(    skip "missing support for #document-fragment")
+      else
+        io.puts %(    input = #{test["#data"].join.chomp('\n').inspect})
+        io.puts %(    output = #{test["#document"].join.inspect})
+        io.puts %(    assert_parses input, output)
+      end
       io.puts %(  end)
     end
     io.puts %(end)
